@@ -1,0 +1,28 @@
+name: build-and-deploy
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install openpyxl pillow
+      - run: python build_data_from_excel.py --excel arcraiders_workbook_v2.xlsx --out site/data/arcraiders.json
+      - run: python site/build_manifest.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/deploy-pages@v4
