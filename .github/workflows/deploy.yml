@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install openpyxl pillow
-      - run: python build_data_from_excel.py --excel arcraiders_workbook_v2.xlsx --out site/data/arcraiders.json
+      - run: python build_data.py
       - run: python site/build_manifest.py
       - uses: actions/upload-pages-artifact@v3
         with:
