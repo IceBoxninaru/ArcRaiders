@@ -1,2 +1,12 @@
 
 site/assets/map/
+
+~$*.xlsx
+*.xlsx
+
+arcraiders_workbook_v2.xlsx
+~$*.xlsx
+
+arcraiders_workbook_v2.xlsx
+~$*.xlsx
+site/assets/map/
