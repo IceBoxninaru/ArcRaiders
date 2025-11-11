@@ -1,5 +1,226 @@
 {
-  "weapons": [],
+  "weapons": [
+    {
+      "id": "image_060e9109",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_060e9109.png"
+    },
+    {
+      "id": "image_19d904e3",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_19d904e3.png"
+    },
+    {
+      "id": "image_44443633",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_44443633.png"
+    },
+    {
+      "id": "image_4e1f55f1",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_4e1f55f1.png"
+    },
+    {
+      "id": "image_67b619d3",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_67b619d3.png"
+    },
+    {
+      "id": "image_718731d6",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_718731d6.png"
+    },
+    {
+      "id": "image_772c8332",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_772c8332.png"
+    },
+    {
+      "id": "image_7d915e98",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_7d915e98.png"
+    },
+    {
+      "id": "image_7dd604ff",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_7dd604ff.png"
+    },
+    {
+      "id": "image_7e0e9b14",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_7e0e9b14.png"
+    },
+    {
+      "id": "image_815fb31b",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_815fb31b.png"
+    },
+    {
+      "id": "image_96349318",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_96349318.png"
+    },
+    {
+      "id": "image_9e425b7b",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_9e425b7b.png"
+    },
+    {
+      "id": "image_9ffc8b63",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_9ffc8b63.png"
+    },
+    {
+      "id": "image_b24744c9",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_b24744c9.png"
+    },
+    {
+      "id": "image_bfd8be43",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_bfd8be43.png"
+    },
+    {
+      "id": "image_c06e55a5",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_c06e55a5.png"
+    },
+    {
+      "id": "image_c81966a9",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_c81966a9.png"
+    },
+    {
+      "id": "image_cf4c0428",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_cf4c0428.png"
+    },
+    {
+      "id": "image_e5932eaa",
+      "name_ja": "",
+      "name_en": "",
+      "rarity": "",
+      "price": "",
+      "slot": "",
+      "ammo_type": "",
+      "description": "",
+      "image_rel": "weapons/image_e5932eaa.png"
+    }
+  ],
   "weapon_levels": [],
   "items": [
     {
@@ -3072,7 +3293,151 @@
       "locations": ""
     }
   ],
-  "arcs": [],
+  "arcs": [
+    {
+      "id": "image_25ebf9d6",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_25ebf9d6.png"
+    },
+    {
+      "id": "image_426d17a7",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_426d17a7.png"
+    },
+    {
+      "id": "image_45332c8a",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_45332c8a.png"
+    },
+    {
+      "id": "image_578d68f3",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_578d68f3.png"
+    },
+    {
+      "id": "image_6591069d",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_6591069d.png"
+    },
+    {
+      "id": "image_718faa76",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_718faa76.png"
+    },
+    {
+      "id": "image_88f59d0c",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_88f59d0c.png"
+    },
+    {
+      "id": "image_9eda95c1",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_9eda95c1.png"
+    },
+    {
+      "id": "image_a033860e",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_a033860e.png"
+    },
+    {
+      "id": "image_b2b65f4c",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_b2b65f4c.png"
+    },
+    {
+      "id": "image_cbdf5afb",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_cbdf5afb.png"
+    },
+    {
+      "id": "image_d05e7c1a",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_d05e7c1a.png"
+    },
+    {
+      "id": "image_eee15905",
+      "name_ja": "",
+      "name_en": "",
+      "class": "",
+      "hp": "",
+      "weakness": "",
+      "region": "",
+      "description": "",
+      "image_rel": "arcs/image_eee15905.png"
+    }
+  ],
   "arc_drops": [],
   "meta": {
     "source": "csv"
