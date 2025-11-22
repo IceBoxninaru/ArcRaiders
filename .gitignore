@@ -10,3 +10,8 @@ arcraiders_workbook_v2.xlsx
 arcraiders_workbook_v2.xlsx
 ~$*.xlsx
 site/assets/map/
+
+# Node / Vite build artifacts
+node_modules
+dist
+.vite
