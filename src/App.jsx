@@ -724,7 +724,7 @@ export default function App() {
   }, [localPins]);
 
   useEffect(() => {
-    if (!canSync || !auth || !db || !user) return;
+    if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_pins`;
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
     const unsubscribe = onSnapshot(
@@ -882,7 +882,8 @@ export default function App() {
   const handleMouseUp = () => setIsDragging(false);
 
   const handleMapClick = async (e) => {
-    if (isDragging || !user) return;
+    if (isDragging) return;
+    if (activeMode === 'shared' && !user) return;
 
     if (selectedPinId) {
       setSelectedPinId(null);
