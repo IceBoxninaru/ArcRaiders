@@ -453,7 +453,7 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onDele
           </button>
         </div>
 
-        <div className="text-xs text-gray-500 mb-4">ID: {pin.id.slice(0, 6)}... によって発見</div>
+                <div className="text-xs text-gray-500 mb-4">投稿者: <span className="text-gray-300 font-semibold">{pin.createdByName || '不明'}</span> <span className="ml-2 text-gray-600">ID: {pin.id.slice(0, 6)}…</span></div>
 
         <div className="flex gap-2 mb-2">
           <button
@@ -1644,4 +1644,5 @@ export default function App() {
     </div>
   );
 }
+
 
