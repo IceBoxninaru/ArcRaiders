@@ -533,6 +533,8 @@ export default function App() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showShareToast, setShowShareToast] = useState(false);
   const [displayName, setDisplayName] = useState('');
+  const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
+  const [roomInput, setRoomInput] = useState(roomId || '');
 
   const canSync = useMemo(() => useFirebase && Boolean(roomId), [roomId]);
 
@@ -686,6 +688,8 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     setRoomId(roomParam || null);
+    setRoomMode(roomParam ? 'shared' : 'local');
+    setRoomInput(roomParam || '');
   }, []);
 
   useEffect(() => {
@@ -1027,14 +1031,21 @@ export default function App() {
   const [imgError, setImgError] = useState(false);
   useEffect(() => setImgError(false), [currentMap, currentLayer, localImages]);
 
+  const applyRoomId = (nextRoomId) => {
+    setRoomId(nextRoomId);
+    setRoomMode(nextRoomId ? 'shared' : 'local');
+    setRoomInput(nextRoomId || '');
+    const params = new URLSearchParams(window.location.search);
+    if (nextRoomId) params.set('room', nextRoomId);
+    else params.delete('room');
+    const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+    window.history.replaceState({}, '', newUrl);
+  };
+
   const copyRoomLink = () => {
     const activeRoomId = roomId || generateRoomId();
     if (!roomId) {
-      setRoomId(activeRoomId);
-      const params = new URLSearchParams(window.location.search);
-      params.set('room', activeRoomId);
-      const newUrl = `${window.location.pathname}?${params.toString()}`;
-      window.history.replaceState({}, '', newUrl);
+      applyRoomId(activeRoomId);
     }
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoomId}`;
     navigator.clipboard
@@ -1156,6 +1167,40 @@ export default function App() {
               />
             </div>
             <div className="flex gap-2">
+              <div className="flex-1 flex items-center gap-2">
+                <select
+                  value={roomMode}
+                  onChange={(e) => {
+                    const mode = e.target.value;
+                    setRoomMode(mode);
+                    if (mode === 'local') applyRoomId(null);
+                  }}
+                  className="w-24 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+                >
+                  <option value="local">ローカル</option>
+                  <option value="shared">共有</option>
+                </select>
+                <input
+                  value={roomInput}
+                  onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
+                  placeholder="ROOM ID"
+                  disabled={roomMode === 'local'}
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 disabled:opacity-50"
+                />
+                <button
+                  onClick={() => {
+                    if (roomMode === 'local') return applyRoomId(null);
+                    const next = roomInput.trim() || generateRoomId();
+                    applyRoomId(next);
+                  }}
+                  className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+                  disabled={roomMode === 'local'}
+                >
+                  接続/生成
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
               <button
                 onClick={() => setSelectedTool('move')}
                 className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
