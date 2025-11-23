@@ -7,10 +7,19 @@
     <!-- Tailwind Play CDN for quick styling without a build step -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      // Default placeholders so the provided App code can run without extra setup.
-      window.__firebase_config = window.__firebase_config || "{}";
-      window.__app_id = window.__app_id || "demo-app";
-      window.__initial_auth_token = window.__initial_auth_token || "";
+      // Firebase本番設定（Firebaseコンソール「arcraidersmap」のスニペットより）
+      window.__firebase_config = {
+        apiKey: "AIzaSyBuiFMEoNcxWdoZoTJ8sBpp9UhY0ot_1",
+        authDomain: "arcfaiders.firebaseapp.com",
+        projectId: "arcfaiders",
+        storageBucket: "arcfaiders.firebasestorage.app",
+        messagingSenderId: "353362170816",
+        appId: "1:353362170816:web:61bd1faddfa4f8f87dee25",
+      };
+      // Firestoreルールと同じ appId を設定（この文字列をルール側でも使う）
+      window.__app_id = "arcraidersmap";
+      // カスタムトークンを使わないなら空のまま
+      window.__initial_auth_token = "";
     </script>
   </head>
   <body class="bg-black text-gray-200">

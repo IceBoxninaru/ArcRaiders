@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 // Simple Vite config for the React app
+// base は環境変数 BASE_PATH を優先し、未指定なら相対パスにしてローカル/Pages両方対応
+const base = process.env.BASE_PATH || './';
+
 export default defineConfig({
   plugins: [react()],
-  // GitHub Pages 配信用にサブパスを指定（リポジトリ名と合わせる）
-  base: '/ArcRaiders/',
+  base,
   server: {
     port: 5173,
   },
