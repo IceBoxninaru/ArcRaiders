@@ -108,13 +108,15 @@ const appId =
   ========================================
 */
 
+const mapAsset = (path) => `${import.meta.env.BASE_URL}maps/${path}`;
+
 const MAP_CONFIG = {
   dam: {
     id: 'dam',
     name: 'ダム戦場',
     width: 2000,
     height: 2000,
-    defaultUrl: '/maps/dam.jpg',
+    defaultUrl: mapAsset('dam.jpg'),
     bgColor: '#1a1d21',
     gridColor: '#2a2e33',
   },
@@ -123,7 +125,7 @@ const MAP_CONFIG = {
     name: '宇宙港',
     width: 2400,
     height: 1600,
-    defaultUrl: '/maps/spaceport.jpg',
+    defaultUrl: mapAsset('spaceport.jpg'),
     bgColor: '#161b22',
     gridColor: '#1f2937',
   },
@@ -132,7 +134,7 @@ const MAP_CONFIG = {
     name: '埋もれた町',
     width: 2000,
     height: 2000,
-    defaultUrl: '/maps/buried.jpg',
+    defaultUrl: mapAsset('buried.jpg'),
     bgColor: '#1f1a16',
     gridColor: '#332b25',
   },
@@ -141,7 +143,7 @@ const MAP_CONFIG = {
     name: 'ブルーゲート',
     width: 2400,
     height: 1600,
-    defaultUrl: '/maps/bluegate.jpg',
+    defaultUrl: mapAsset('bluegate.jpg'),
     bgColor: '#1e293b',
     gridColor: '#334155',
   },
@@ -153,8 +155,8 @@ const MAP_CONFIG = {
     bgColor: '#0f172a',
     gridColor: '#1e293b',
     layers: [
-      { id: 'upper', name: '地上 (施設)', defaultUrl: '/maps/stella_upper.jpg' },
-      { id: 'lower', name: '地下 (メトロ)', defaultUrl: '/maps/stella_lower.jpg' },
+      { id: 'upper', name: '地上 (施設)', defaultUrl: mapAsset('stella_upper.jpg') },
+      { id: 'lower', name: '地下 (メトロ)', defaultUrl: mapAsset('stella_lower.jpg') },
     ],
   },
 };
