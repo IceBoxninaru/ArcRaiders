@@ -19,9 +19,14 @@ jobs:
           node-version: 18
       - run: npm ci
       - run: npm run build
+      - name: Copy dist to docs for Pages
+        run: |
+          rm -rf docs
+          mkdir docs
+          cp -r dist/* docs/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist    # docs を使いたいなら dist を docs にコピーして path: docs に変更
+          path: docs
 
   deploy:
     needs: build
