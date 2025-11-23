@@ -505,7 +505,8 @@ export default function App() {
   const [currentLayer, setCurrentLayer] = useState(null);
   const [localImages, setLocalImages] = useState({});
 
-  const [pins, setPins] = useState([]);
+  const [sharedPins, setSharedPins] = useState([]);
+  const [localPins, setLocalPins] = useState([]);
   const [selectedPinId, setSelectedPinId] = useState(null);
   const [markedPinIds, setMarkedPinIds] = useState([]);
   const [markerVisibility, setMarkerVisibility] = useState({});
@@ -535,6 +536,15 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
   const [roomInput, setRoomInput] = useState(roomId || '');
+  const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
+  const pins = activeMode === 'shared' ? sharedPins : localPins;
+  const setPinsForMode = (updater, mode = activeMode) => {
+    if (mode === 'shared') {
+      setSharedPins((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+    } else {
+      setLocalPins((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+    }
+  };
 
   const canSync = useMemo(() => useFirebase && Boolean(roomId), [roomId]);
 
@@ -690,6 +700,15 @@ export default function App() {
     setRoomId(roomParam || null);
     setRoomMode(roomParam ? 'shared' : 'local');
     setRoomInput(roomParam || '');
+    const savedLocalPins = localStorage.getItem('tactical_local_pins');
+    if (savedLocalPins) {
+      try {
+        const parsed = JSON.parse(savedLocalPins);
+        if (Array.isArray(parsed)) setLocalPins(parsed);
+      } catch (err) {
+        console.warn('Failed to parse local pins', err);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -699,6 +718,11 @@ export default function App() {
     centerMap();
   }, [currentMap]);
 
+  // Persist local pins
+  useEffect(() => {
+    localStorage.setItem('tactical_local_pins', JSON.stringify(localPins || []));
+  }, [localPins]);
+
   useEffect(() => {
     if (!canSync || !auth || !db || !user) return;
     const collectionName = `${roomId}_pins`;
@@ -707,7 +731,7 @@ export default function App() {
       q,
       (snapshot) => {
         const loadedPins = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setPins(loadedPins);
+        setSharedPins(loadedPins);
       },
       (error) => console.error(error),
     );
@@ -756,7 +780,7 @@ export default function App() {
     if (!defaultIcon) return;
     setIsResettingIcon(true);
     setMarkerIcons((prev) => ({ ...prev, [markerId]: defaultIcon }));
-    setPins((prev) => prev.map((p) => (p.type === markerId ? { ...p, iconUrl: defaultIcon } : p)));
+    setPinsForMode((prev) => prev.map((p) => (p.type === markerId ? { ...p, iconUrl: defaultIcon } : p)));
 
     if (canSync && roomId) {
       const collectionName = `${roomId}_pins`;
@@ -874,9 +898,9 @@ export default function App() {
 
     if (x < 0 || y < 0 || x > config.width || y > config.height) return;
 
-    if (!canSync) {
+    if (!canSync || activeMode === 'local') {
       const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setPins((prev) => [
+      setPinsForMode((prev) => [
         ...prev,
         {
           id: localId,
@@ -900,12 +924,12 @@ export default function App() {
 
     try {
       const collectionName = `${roomId}_pins`;
-      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', collectionName), {
-        mapId: currentMap,
-        layerId: currentLayer,
-        x,
-        y,
-        type: selectedTool,
+        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', collectionName), {
+          mapId: currentMap,
+          layerId: currentLayer,
+          x,
+          y,
+          type: selectedTool,
         iconUrl: markerIcons[selectedTool] || undefined,
         createdAt: serverTimestamp(),
         createdBy: user.uid,
@@ -924,9 +948,9 @@ export default function App() {
   };
 
   const deletePin = async (pinId) => {
-    if (!user) return;
-    if (!canSync) {
-      setPins((prev) => prev.filter((p) => p.id !== pinId));
+    if (!user && activeMode === 'shared') return;
+    if (!canSync || activeMode === 'local') {
+      setPinsForMode((prev) => prev.filter((p) => p.id !== pinId));
       if (selectedPinId === pinId) setSelectedPinId(null);
       setMarkedPinIds((prev) => prev.filter((id) => id !== pinId));
       return;
@@ -942,9 +966,9 @@ export default function App() {
   };
 
   const updatePinImage = async (pinId, base64Image) => {
-    if (!user) return;
-    if (!canSync) {
-      setPins((prev) => prev.map((p) => (p.id === pinId ? { ...p, imageUrl: base64Image } : p)));
+    if (!user && activeMode === 'shared') return;
+    if (!canSync || activeMode === 'local') {
+      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, imageUrl: base64Image } : p)));
       return;
     }
     if (!roomId) return;
@@ -958,10 +982,10 @@ export default function App() {
     }
   };
   const updatePinIcon = async (pinId, base64Icon) => {
-    if (!user) return;
+    if (!user && activeMode === 'shared') return;
     addIconToLibrary(base64Icon);
-    if (!canSync) {
-      setPins((prev) => prev.map((p) => (p.id === pinId ? { ...p, iconUrl: base64Icon } : p)));
+    if (!canSync || activeMode === 'local') {
+      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, iconUrl: base64Icon } : p)));
       return;
     }
     if (!roomId) return;
@@ -1035,6 +1059,10 @@ export default function App() {
     setRoomId(nextRoomId);
     setRoomMode(nextRoomId ? 'shared' : 'local');
     setRoomInput(nextRoomId || '');
+    setSelectedPinId(null);
+    if (!nextRoomId) {
+      setSharedPins([]);
+    }
     const params = new URLSearchParams(window.location.search);
     if (nextRoomId) params.set('room', nextRoomId);
     else params.delete('room');
