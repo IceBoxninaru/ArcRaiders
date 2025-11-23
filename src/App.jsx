@@ -1341,6 +1341,7 @@ export default function App() {
                         isSelected ? 'drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]' : ''
                       }`}
                     >
+                      <div className="absolute inset-[-6px] rounded-full border-2 border-orange-500 opacity-80 pointer-events-none" />
                       {isMarked && (
                         <Heart
                           size={16}
