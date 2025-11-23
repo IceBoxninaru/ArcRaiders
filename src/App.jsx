@@ -279,6 +279,15 @@ const DEFAULT_MARKER_ICONS = {
   custom_pin: '/icon/field_crate.svg',
 };
 
+// BASE_URL を考慮して /icon/ の先頭スラッシュを補正
+const ICON_BASE = import.meta.env.BASE_URL || '/';
+Object.keys(DEFAULT_MARKER_ICONS).forEach((k) => {
+  const v = DEFAULT_MARKER_ICONS[k];
+  if (typeof v === 'string' && v.startsWith('/')) {
+    const normalized = v.replace(/^\//, '');
+    DEFAULT_MARKER_ICONS[k] = `${ICON_BASE}${normalized}`;
+  }
+});
 const DEFAULT_ICON_PATHS = new Set(Object.values(DEFAULT_MARKER_ICONS));
 
 const makePresetIcon = (color, glyph = '') =>
@@ -1635,3 +1644,4 @@ export default function App() {
     </div>
   );
 }
+
