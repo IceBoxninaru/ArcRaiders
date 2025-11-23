@@ -4,25 +4,27 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
-      - run: pip install openpyxl pillow
-      - run: python build_data.py
-      - run: python site/build_manifest.py
+          node-version: 18
+      - run: npm ci
+      - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: dist    # docs を使いたいなら dist を docs にコピーして path: docs に変更
+
   deploy:
     needs: build
-    permissions:
-      pages: write
-      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/deploy-pages@v4
