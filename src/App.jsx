@@ -13,6 +13,7 @@ import {
   onSnapshot,
   doc,
   deleteDoc,
+  setDoc,
   updateDoc,
   serverTimestamp,
   query,
@@ -110,7 +111,7 @@ const appId =
 
 const mapAsset = (path) => `${import.meta.env.BASE_URL}maps/${path}`;
 
-const MAP_CONFIG = {
+export const MAP_CONFIG = {
   dam: {
     id: 'dam',
     name: 'ダム戦場',
@@ -536,6 +537,9 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
   const [roomInput, setRoomInput] = useState(roomId || '');
+  const [viewMode, setViewMode] = useState('map'); // map | list
+  const [localMapMeta, setLocalMapMeta] = useState({});
+  const [sharedMapMeta, setSharedMapMeta] = useState({});
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
   const pins = activeMode === 'shared' ? sharedPins : localPins;
   const setPinsForMode = (updater, mode = activeMode) => {
@@ -697,9 +701,13 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
+    const mapParam = params.get('map');
+    const viewParam = params.get('view');
     setRoomId(roomParam || null);
     setRoomMode(roomParam ? 'shared' : 'local');
     setRoomInput(roomParam || '');
+    if (mapParam && MAP_CONFIG[mapParam]) setCurrentMap(mapParam);
+    if (viewParam === 'list') setViewMode('list');
     const savedLocalPins = localStorage.getItem('tactical_local_pins');
     if (savedLocalPins) {
       try {
@@ -709,6 +717,15 @@ export default function App() {
         console.warn('Failed to parse local pins', err);
       }
     }
+    const savedMapMeta = localStorage.getItem('tactical_local_map_meta');
+    if (savedMapMeta) {
+      try {
+        const parsed = JSON.parse(savedMapMeta);
+        if (parsed && typeof parsed === 'object') setLocalMapMeta(parsed);
+      } catch (err) {
+        console.warn('Failed to parse local map meta', err);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -716,12 +733,23 @@ export default function App() {
     if (config.layers && config.layers.length > 0) setCurrentLayer(config.layers[0].id);
     else setCurrentLayer(null);
     centerMap();
+    // update URL map param
+    const params = new URLSearchParams(window.location.search);
+    params.set('map', currentMap);
+    if (roomId) params.set('room', roomId);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
   }, [currentMap]);
 
   // Persist local pins
   useEffect(() => {
     localStorage.setItem('tactical_local_pins', JSON.stringify(localPins || []));
   }, [localPins]);
+
+  // Persist local map meta
+  useEffect(() => {
+    localStorage.setItem('tactical_local_map_meta', JSON.stringify(localMapMeta || {}));
+  }, [localMapMeta]);
 
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
@@ -737,6 +765,24 @@ export default function App() {
     );
     return () => unsubscribe();
   }, [user, roomId]);
+
+  useEffect(() => {
+    if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
+    const collectionName = `${roomId}_mapmeta`;
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const loaded = {};
+        snapshot.docs.forEach((docSnap) => {
+          loaded[docSnap.id] = docSnap.data();
+        });
+        setSharedMapMeta(loaded);
+      },
+      (error) => console.error(error),
+    );
+    return () => unsubscribe();
+  }, [user, roomId, activeMode, canSync]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -1044,6 +1090,9 @@ export default function App() {
     localStorage.setItem('tactical_marker_icons', JSON.stringify(DEFAULT_MARKER_ICONS));
   };
 
+  const mapMeta = activeMode === 'shared' ? sharedMapMeta : localMapMeta;
+  const currentMapMeta = mapMeta[currentMap] || { title: '', note: '' };
+
   const config = MAP_CONFIG[currentMap];
   let defaultUrl = config.defaultUrl;
   let imageKey = currentMap;
@@ -1063,12 +1112,49 @@ export default function App() {
     setSelectedPinId(null);
     if (!nextRoomId) {
       setSharedPins([]);
+      setSharedMapMeta({});
     }
     const params = new URLSearchParams(window.location.search);
     if (nextRoomId) params.set('room', nextRoomId);
     else params.delete('room');
+    params.set('map', currentMap);
     const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     window.history.replaceState({}, '', newUrl);
+  };
+
+  const applyViewMode = (next) => {
+    setViewMode(next);
+    const params = new URLSearchParams(window.location.search);
+    if (roomId) params.set('room', roomId);
+    params.set('map', currentMap);
+    if (next === 'list') params.set('view', 'list');
+    else params.delete('view');
+    const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+    window.history.replaceState({}, '', newUrl);
+  };
+
+  // Map metadata handling
+  const updateMapMeta = async (mapId, partial) => {
+    const prev = mapMeta[mapId] || {};
+    const next = { ...prev, ...partial, updatedAt: Date.now(), updatedBy: user?.uid || 'local', updatedByName: displayName || 'ローカル' };
+    if (activeMode === 'shared') {
+      if (!canSync || !roomId || !user || !db) return;
+      const collectionName = `${roomId}_mapmeta`;
+      try {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next).catch(async (err) => {
+          if (err.code === 'not-found' || String(err).includes('No document')) {
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next);
+          } else {
+            throw err;
+          }
+        });
+        setSharedMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
+      } catch (err) {
+        console.error('Map meta update failed', err);
+      }
+    } else {
+      setLocalMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
+    }
   };
 
   const copyRoomLink = () => {
@@ -1087,6 +1173,45 @@ export default function App() {
   };
 
   return (
+    viewMode === 'list' ? (
+      <div className="min-h-screen bg-black text-gray-200 p-6">
+        <header className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="text-orange-500 w-5 h-5" />
+            <h1 className="font-bold text-base tracking-wider text-gray-100">TACTICAL - マップ一覧</h1>
+          </div>
+          <button
+            onClick={() => applyViewMode('map')}
+            className="px-4 py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold"
+          >
+            マップに戻る
+          </button>
+        </header>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Object.values(MAP_CONFIG).map((map) => {
+            const meta = mapMeta[map.id] || {};
+            return (
+              <div key={map.id} className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-2 shadow">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-500 uppercase">{map.id}</div>
+                  <button
+                    onClick={() => {
+                      setCurrentMap(map.id);
+                      applyViewMode('map');
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700"
+                  >
+                    開く
+                  </button>
+                </div>
+                <div className="text-lg font-bold text-white">{meta.title || map.name}</div>
+                <div className="text-sm text-gray-400 line-clamp-3">{meta.note || 'メモなし'}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : (
     <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative">
       {!useFirebase && (
         <div className="absolute top-2 right-2 z-50 bg-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow">
@@ -1131,6 +1256,23 @@ export default function App() {
               </button>
             ))}
           </div>
+          <select
+            value={currentMap}
+            onChange={(e) => setCurrentMap(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+          >
+            {Object.values(MAP_CONFIG).map((map) => (
+              <option key={map.id} value={map.id}>
+                {map.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => applyViewMode('list')}
+            className="px-3 py-1 text-xs font-medium rounded border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 whitespace-nowrap"
+          >
+            マップ一覧
+          </button>
 
           <button
             onClick={() => setSelectedTool('custom_pin')}
@@ -1230,6 +1372,26 @@ export default function App() {
               </div>
             </div>
             <div className="flex gap-2 mt-2">
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-[10px] text-gray-400">マップ名</label>
+                <input
+                  value={currentMapMeta.title || MAP_CONFIG[currentMap]?.name || ''}
+                  onChange={(e) => updateMapMeta(currentMap, { title: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
+                  placeholder="マップ名を入力"
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-[10px] text-gray-400">メモ</label>
+                <input
+                  value={currentMapMeta.note || ''}
+                  onChange={(e) => updateMapMeta(currentMap, { note: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
+                  placeholder="メモを入力"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
               <button
                 onClick={() => setSelectedTool('move')}
                 className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
@@ -1716,6 +1878,7 @@ export default function App() {
       )}
 
     </div>
+    )
   );
 }
 
