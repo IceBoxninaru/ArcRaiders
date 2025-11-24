@@ -367,10 +367,11 @@ const TacticalGrid = ({ config, onUpload }) => (
   </div>
 );
 
-const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onDelete, onMark }) => {
+const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onUpdateNote, onDelete, onMark }) => {
   const fileInputRef = useRef(null);
   const iconInputRef = useRef(null);
   const categoryDef = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
+  const [noteDraft, setNoteDraft] = useState(pin.note || '');
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -456,6 +457,23 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onDele
         </div>
 
                 <div className="text-xs text-gray-500 mb-4">投稿者: <span className="text-gray-300 font-semibold">{pin.createdByName || '不明'}</span> <span className="ml-2 text-gray-600">ID: {pin.id.slice(0, 6)}…</span></div>
+                <div className="flex flex-col gap-2 mb-3">
+                  <label className="text-[10px] text-gray-400">メモ</label>
+                  <textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    className="w-full h-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
+                    placeholder="ピンに紐づくメモを入力"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => onUpdateNote?.(pin.id, noteDraft)}
+                      className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-200"
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
 
         <div className="flex gap-2 mb-2">
           <button
@@ -540,6 +558,8 @@ export default function App() {
   const [roomInput, setRoomInput] = useState(roomId || '');
   const [viewMode, setViewMode] = useState('map'); // map | list
   const [modeChosen, setModeChosen] = useState(Boolean(roomId));
+  const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
+  const [newProfileName, setNewProfileName] = useState('');
   const [localMapMeta, setLocalMapMeta] = useState({});
   const [sharedMapMeta, setSharedMapMeta] = useState({});
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
@@ -705,11 +725,13 @@ export default function App() {
     const roomParam = params.get('room');
     const mapParam = params.get('map');
     const viewParam = params.get('view');
+    const profileParam = params.get('profile');
     setRoomId(roomParam || null);
     setRoomMode(roomParam ? 'shared' : 'local');
     setRoomInput(roomParam || '');
     if (roomParam) setModeChosen(true);
     if (mapParam && MAP_CONFIG[mapParam]) setCurrentMap(mapParam);
+    if (profileParam) setActiveProfile(profileParam);
     if (viewParam === 'list') setViewMode('list');
     const savedLocalPins = localStorage.getItem('tactical_local_pins');
     if (savedLocalPins) {
@@ -739,10 +761,20 @@ export default function App() {
     // update URL map param
     const params = new URLSearchParams(window.location.search);
     params.set('map', currentMap);
+    params.set('profile', activeProfile);
     if (roomId) params.set('room', roomId);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [currentMap]);
+  }, [currentMap, activeProfile, roomId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('map', currentMap);
+    params.set('profile', activeProfile);
+    if (roomId) params.set('room', roomId);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+  }, [activeProfile]);
 
   // Persist local pins
   useEffect(() => {
@@ -960,6 +992,8 @@ export default function App() {
           y,
           type: selectedTool,
           iconUrl: markerIcons[selectedTool] || undefined,
+          profileId: activeProfile,
+          note: '',
           createdAt: new Date(),
           createdBy: user?.uid || 'local',
           createdByName: displayName || '匿名',
@@ -974,13 +1008,15 @@ export default function App() {
 
     try {
       const collectionName = `${roomId}_pins`;
-        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', collectionName), {
-          mapId: currentMap,
-          layerId: currentLayer,
-          x,
-          y,
-          type: selectedTool,
+      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', collectionName), {
+        mapId: currentMap,
+        layerId: currentLayer,
+        x,
+        y,
+        type: selectedTool,
         iconUrl: markerIcons[selectedTool] || undefined,
+        profileId: activeProfile,
+        note: '',
         createdAt: serverTimestamp(),
         createdBy: user.uid,
         createdByName: displayName || '匿名',
@@ -1049,6 +1085,23 @@ export default function App() {
     }
   };
 
+  const updatePinNote = async (pinId, noteText) => {
+    if (!user && activeMode === 'shared') return;
+    if (!canSync || activeMode === 'local') {
+      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, note: noteText } : p)));
+      return;
+    }
+    if (!roomId) return;
+    const collectionName = `${roomId}_pins`;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId), {
+        note: noteText,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const centerMap = () => {
     const containerW = window.innerWidth;
     const containerH = window.innerHeight;
@@ -1062,6 +1115,8 @@ export default function App() {
 
   const visiblePins = pins.filter((p) => {
     if (p.mapId !== currentMap) return false;
+    const pinProfile = p.profileId || 'default';
+    if (pinProfile !== activeProfile) return false;
     const config = MAP_CONFIG[currentMap];
     if (config.layers && p.layerId !== currentLayer) return false;
     if (!isMarkerVisible(p.type)) return false;
@@ -1094,7 +1149,20 @@ export default function App() {
   };
 
   const mapMeta = activeMode === 'shared' ? sharedMapMeta : localMapMeta;
-  const currentMapMeta = mapMeta[currentMap] || { title: '', note: '' };
+  const currentMapMeta = mapMeta[currentMap] || { title: '', note: '', profiles: ['default'] };
+  const profiles = currentMapMeta.profiles && currentMapMeta.profiles.length > 0 ? currentMapMeta.profiles : ['default'];
+  useEffect(() => {
+    if (!profiles.includes(activeProfile)) {
+      setActiveProfile(profiles[0] || 'default');
+    }
+  }, [currentMap, profiles]);
+  const addProfile = (name) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+    const list = Array.from(new Set([...profiles, trimmed]));
+    updateMapMeta(currentMap, { profiles: list });
+    setActiveProfile(trimmed);
+  };
 
   const config = MAP_CONFIG[currentMap];
   let defaultUrl = config.defaultUrl;
@@ -1121,6 +1189,7 @@ export default function App() {
     if (nextRoomId) params.set('room', nextRoomId);
     else params.delete('room');
     params.set('map', currentMap);
+    params.set('profile', activeProfile);
     const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     window.history.replaceState({}, '', newUrl);
   };
@@ -1132,6 +1201,7 @@ export default function App() {
     params.set('map', currentMap);
     if (next === 'list') params.set('view', 'list');
     else params.delete('view');
+    params.set('profile', activeProfile);
     const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     window.history.replaceState({}, '', newUrl);
   };
@@ -1321,6 +1391,32 @@ export default function App() {
               </option>
             ))}
           </select>
+          <select
+            value={activeProfile}
+            onChange={(e) => setActiveProfile(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+          >
+            {profiles.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <input
+            value={newProfileName}
+            onChange={(e) => setNewProfileName(e.target.value)}
+            placeholder="新規プロファイル名"
+            className="w-32 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+          />
+          <button
+            onClick={() => {
+              addProfile(newProfileName || `攻略${profiles.length + 1}`);
+              setNewProfileName('');
+            }}
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+          >
+            追加
+          </button>
           <button
             onClick={() => applyViewMode('list')}
             className="px-3 py-1 text-xs font-medium rounded border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 whitespace-nowrap"
@@ -1690,6 +1786,7 @@ export default function App() {
                   onClose={() => setSelectedPinId(null)}
                   onUpdateImage={updatePinImage}
                   onUpdateIcon={updatePinIcon}
+                  onUpdateNote={updatePinNote}
                   onMark={(id) => {
                     setMarkedPinIds((prev) =>
                       prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id],
