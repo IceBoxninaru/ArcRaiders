@@ -47,6 +47,7 @@ import {
   Flag,
   MapPin,
   User,
+  Users,
   Anchor,
   Tent,
   Skull,
@@ -538,6 +539,7 @@ export default function App() {
   const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
   const [roomInput, setRoomInput] = useState(roomId || '');
   const [viewMode, setViewMode] = useState('map'); // map | list
+  const [modeChosen, setModeChosen] = useState(Boolean(roomId));
   const [localMapMeta, setLocalMapMeta] = useState({});
   const [sharedMapMeta, setSharedMapMeta] = useState({});
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
@@ -706,6 +708,7 @@ export default function App() {
     setRoomId(roomParam || null);
     setRoomMode(roomParam ? 'shared' : 'local');
     setRoomInput(roomParam || '');
+    if (roomParam) setModeChosen(true);
     if (mapParam && MAP_CONFIG[mapParam]) setCurrentMap(mapParam);
     if (viewParam === 'list') setViewMode('list');
     const savedLocalPins = localStorage.getItem('tactical_local_pins');
@@ -1173,6 +1176,57 @@ export default function App() {
   };
 
   return (
+    !modeChosen ? (
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-gray-100 flex items-center justify-center p-6">
+        <div className="max-w-5xl w-full space-y-8 text-center">
+          <div>
+            <div className="text-3xl font-extrabold text-indigo-300 mb-2">モード選択</div>
+            <div className="text-sm text-gray-400">アプリケーションの実行環境を選択してください</div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <button
+              onClick={() => {
+                applyRoomId(null);
+                setModeChosen(true);
+                applyViewMode('map');
+              }}
+              className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition shadow-lg flex flex-col items-center gap-3"
+            >
+              <div className="p-4 rounded-full bg-indigo-600/20 text-indigo-300">
+                <User size={32} />
+              </div>
+              <div className="text-xl font-bold">ローカル</div>
+              <div className="text-sm text-gray-400 leading-relaxed">
+                自分の端末内だけで完結します。通信を行わず、個人的に使用する場合に最適です。
+              </div>
+              <div className="text-xs text-gray-500 flex items-center gap-2 mt-2">
+                <span className="h-2 w-2 rounded-full bg-green-400"></span> オフライン動作
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                const next = roomInput.trim() || roomId || generateRoomId();
+                applyRoomId(next);
+                setModeChosen(true);
+                applyViewMode('map');
+              }}
+              className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-purple-500 transition shadow-lg flex flex-col items-center gap-3"
+            >
+              <div className="p-4 rounded-full bg-purple-600/20 text-purple-300">
+                <Users size={32} />
+              </div>
+              <div className="text-xl font-bold">共有（オンライン）</div>
+              <div className="text-sm text-gray-400 leading-relaxed">
+                データをクラウドで同期します。チームや友人と情報を共有する場合に最適です。
+              </div>
+              <div className="text-xs text-gray-500 flex items-center gap-2 mt-2">
+                <span className="h-2 w-2 rounded-full bg-blue-400"></span> インターネット接続が必要
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    ) :
     viewMode === 'list' ? (
       <div className="min-h-screen bg-black text-gray-200 p-6">
         <header className="flex items-center justify-between mb-6">
