@@ -1923,6 +1923,17 @@ export default function App() {
                 >
                   モード選択へ
                 </button>
+                <button
+                  onClick={() => {
+                    setModeChosen(false);
+                    setRoomMode("local");
+                    setRoomId(null);
+                    setRoomInput(lastSharedRoom || "");
+                  }}
+                  className="px-2 py-1 text-xs bg-slate-800 border border-slate-700 text-gray-200 rounded hover:bg-slate-700"
+                >
+                  モード選択へ
+                </button>
               </div>
             </div>
             <div className="flex gap-2 mt-2">
@@ -2436,6 +2447,7 @@ export default function App() {
     )
   );
 }
+
 
 
 
