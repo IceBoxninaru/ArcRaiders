@@ -559,6 +559,7 @@ export default function App() {
   const [modeChosen, setModeChosen] = useState(Boolean(roomId));
   const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
   const [newProfileName, setNewProfileName] = useState('');
+  const [renameProfileName, setRenameProfileName] = useState('');
   const [localMapMeta, setLocalMapMeta] = useState({});
   const [sharedMapMeta, setSharedMapMeta] = useState({});
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
@@ -1174,6 +1175,43 @@ export default function App() {
     setActiveProfile(trimmed);
   };
 
+  const renameProfile = async (nextName) => {
+    const trimmed = (nextName || '').trim();
+    if (!trimmed || trimmed === activeProfile) return;
+    if (profiles.includes(trimmed)) {
+      setActiveProfile(trimmed);
+      return;
+    }
+    const nextList = profiles.map((p) => (p === activeProfile ? trimmed : p));
+    setMapMetaForMode(currentMap, (prev) => {
+      const meta = prev[currentMap] || {};
+      return { ...prev, [currentMap]: { ...meta, profiles: nextList } };
+    });
+    updateMapMeta(currentMap, { profiles: nextList });
+    if (activeMode === 'local') {
+      setLocalPins((prev) =>
+        prev.map((p) =>
+          p.mapId === currentMap && (p.profileId || 'default') === activeProfile
+            ? { ...p, profileId: trimmed }
+            : p,
+        ),
+      );
+    } else {
+      const targets = sharedPins.filter(
+        (p) => p.mapId === currentMap && (p.profileId || 'default') === activeProfile,
+      );
+      const collectionName = `${roomId}_pins`;
+      await Promise.allSettled(
+        targets.map((p) =>
+          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, p.id), {
+            profileId: trimmed,
+          }),
+        ),
+      );
+    }
+    setActiveProfile(trimmed);
+  };
+
   const config = MAP_CONFIG[currentMap];
   let defaultUrl = config.defaultUrl;
   let imageKey = currentMap;
@@ -1373,6 +1411,21 @@ export default function App() {
             className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
           >
             追加
+          </button>
+          <input
+            value={renameProfileName}
+            onChange={(e) => setRenameProfileName(e.target.value)}
+            placeholder="プロファイル名を変更"
+            className="w-32 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+          />
+          <button
+            onClick={() => {
+              renameProfile(renameProfileName);
+              setRenameProfileName('');
+            }}
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+          >
+            リネーム
           </button>
           <button
             onClick={() => {
