@@ -596,7 +596,15 @@ export default function App() {
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
   const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
   const allowedUsers = roomInfo?.allowedUsers || [];
-  const isApproved = isOwner || (user && allowedUsers.includes(user.uid));
+  const isApproved = useMemo(() => {
+    // ローカルは常にOK
+    if (activeMode !== 'shared') return true;
+    // 共有だがまだ情報がない場合はオーナーが確定するまで暫定で許可
+    if (!roomId || !user) return false;
+    if (!roomInfo) return true;
+    if (roomInfo.ownerUid === user.uid) return true;
+    return allowedUsers.includes(user.uid);
+  }, [activeMode, roomId, user, roomInfo, allowedUsers]);
   const pins = activeMode === 'shared' ? sharedPins : localPins;
   const setPinsForMode = (updater, mode = activeMode) => {
     if (mode === 'shared') {
