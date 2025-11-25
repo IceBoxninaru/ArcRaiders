@@ -962,9 +962,16 @@ export default function App() {
 
   const handleMapClick = async (e) => {
     if (isDragging) return;
-    // 共有モードでユーザー/Room未接続なら弾く
+    // 共有モードでユーザー/Room未接続ならサインインを試みて中断
     if (activeMode === 'shared' && (!user || !roomId)) {
-      alert('共有モードでピンを置くにはRoom接続とサインインが必要です。左のRoom欄で接続してください。');
+      if (useFirebase && auth) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error('Auth retry failed', err);
+        }
+      }
+      alert('共有モードでピンを置くにはRoom接続とサインインが必要です。数秒後に再度お試しください。');
       return;
     }
 
