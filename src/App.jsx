@@ -556,7 +556,7 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
   const [roomInput, setRoomInput] = useState(roomId || '');
-  const [viewMode, setViewMode] = useState('map'); // map | list
+  const [viewMode, setViewMode] = useState('map'); // map only (list removed)
   const [modeChosen, setModeChosen] = useState(Boolean(roomId));
   const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
   const [newProfileName, setNewProfileName] = useState('');
@@ -724,7 +724,6 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     const mapParam = params.get('map');
-    const viewParam = params.get('view');
     const profileParam = params.get('profile');
     setRoomId(roomParam || null);
     setRoomMode(roomParam ? 'shared' : 'local');
@@ -732,7 +731,6 @@ export default function App() {
     if (roomParam) setModeChosen(true);
     if (mapParam && MAP_CONFIG[mapParam]) setCurrentMap(mapParam);
     if (profileParam) setActiveProfile(profileParam);
-    if (viewParam === 'list') setViewMode('list');
     const savedLocalPins = localStorage.getItem('tactical_local_pins');
     if (savedLocalPins) {
       try {
@@ -1194,17 +1192,7 @@ export default function App() {
     window.history.replaceState({}, '', newUrl);
   };
 
-  const applyViewMode = (next) => {
-    setViewMode(next);
-    const params = new URLSearchParams(window.location.search);
-    if (roomId) params.set('room', roomId);
-    params.set('map', currentMap);
-    if (next === 'list') params.set('view', 'list');
-    else params.delete('view');
-    params.set('profile', activeProfile);
-    const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
-    window.history.replaceState({}, '', newUrl);
-  };
+  const applyViewMode = () => {}; // listビューは削除
 
   // Map metadata handling
   const updateMapMeta = async (mapId, partial) => {
@@ -1294,45 +1282,6 @@ export default function App() {
               </div>
             </button>
           </div>
-        </div>
-      </div>
-    ) :
-    viewMode === 'list' ? (
-      <div className="min-h-screen bg-black text-gray-200 p-6">
-        <header className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="text-orange-500 w-5 h-5" />
-            <h1 className="font-bold text-base tracking-wider text-gray-100">TACTICAL - マップ一覧</h1>
-          </div>
-          <button
-            onClick={() => applyViewMode('map')}
-            className="px-4 py-2 rounded bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold"
-          >
-            マップに戻る
-          </button>
-        </header>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {Object.values(MAP_CONFIG).map((map) => {
-            const meta = mapMeta[map.id] || {};
-            return (
-              <div key={map.id} className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col gap-2 shadow">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-500 uppercase">{map.id}</div>
-                  <button
-                    onClick={() => {
-                      setCurrentMap(map.id);
-                      applyViewMode('map');
-                    }}
-                    className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700"
-                  >
-                    開く
-                  </button>
-                </div>
-                <div className="text-lg font-bold text-white">{meta.title || map.name}</div>
-                <div className="text-sm text-gray-400 line-clamp-3">{meta.note || 'メモなし'}</div>
-              </div>
-            );
-          })}
         </div>
       </div>
     ) : (
