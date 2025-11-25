@@ -17,6 +17,8 @@ import {
   updateDoc,
   serverTimestamp,
   query,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import {
   Move,
@@ -518,8 +520,17 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onUpda
   MAIN APP COMPONENT
   ========================================
 */
+const LAST_SHARED_ROOM_KEY = 'tactical_last_shared_room';
+
 export default function App() {
   const [user, setUser] = useState(null);
+  const lastSharedRoom = (() => {
+    try {
+      return localStorage.getItem(LAST_SHARED_ROOM_KEY) || '';
+    } catch {
+      return '';
+    }
+  })();
   const [roomId, setRoomId] = useState(null);
   const [currentMap, setCurrentMap] = useState('dam');
   const [currentLayer, setCurrentLayer] = useState(null);
@@ -545,6 +556,20 @@ export default function App() {
   const [newCategoryId, setNewCategoryId] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#7dd3fc');
   const [deleteIconTargetId, setDeleteIconTargetId] = useState('');
+  const [approvalMessage, setApprovalMessage] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const pendingEntries = roomInfo?.pending || [];
+  const normalizedPending = useMemo(
+    () =>
+      pendingEntries.map((p) =>
+        typeof p === 'string' ? { uid: p, name: p } : { uid: p?.uid, name: p?.name || p?.uid || 'guest' },
+      ),
+    [pendingEntries],
+  );
+  const isPendingSelf = useMemo(
+    () => Boolean(user && normalizedPending.find((p) => p.uid === user.uid)),
+    [user, normalizedPending],
+  );
 
   const [selectedTool, setSelectedTool] = useState('move');
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.4 });
@@ -554,15 +579,25 @@ export default function App() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showShareToast, setShowShareToast] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
-  const [roomInput, setRoomInput] = useState(roomId || '');
-  const [modeChosen, setModeChosen] = useState(Boolean(roomId));
+  const [roomMode, setRoomMode] = useState('local'); // local or shared
+  const [roomInput, setRoomInput] = useState(lastSharedRoom || '');
+  const [modeChosen, setModeChosen] = useState(false);
+  const [showSharedSetup, setShowSharedSetup] = useState(false);
   const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
   const [newProfileName, setNewProfileName] = useState('');
   const [renameProfileName, setRenameProfileName] = useState('');
   const [localMapMeta, setLocalMapMeta] = useState({});
   const [sharedMapMeta, setSharedMapMeta] = useState({});
+  const [roomInfo, setRoomInfo] = useState(null); // { ownerUid, allowedUsers, pending }
+  const [roomInfoLoading, setRoomInfoLoading] = useState(false);
+  const roomDocRef = useMemo(
+    () => (db && roomId ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId) : null),
+    [db, roomId],
+  );
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
+  const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
+  const allowedUsers = roomInfo?.allowedUsers || [];
+  const isApproved = isOwner || (user && allowedUsers.includes(user.uid));
   const pins = activeMode === 'shared' ? sharedPins : localPins;
   const setPinsForMode = (updater, mode = activeMode) => {
     if (mode === 'shared') {
@@ -572,7 +607,7 @@ export default function App() {
     }
   };
 
-  const canSync = useMemo(() => useFirebase && Boolean(roomId), [roomId]);
+  const canSync = useMemo(() => useFirebase && Boolean(roomId) && isApproved, [roomId, isApproved]);
 
   const [openCategories, setOpenCategories] = useState({
     containers: true,
@@ -597,6 +632,24 @@ export default function App() {
     });
     return base;
   }, [customMarkers]);
+
+  useEffect(() => {
+    if (activeMode !== 'shared') {
+      setApprovalMessage('');
+      return;
+    }
+    if (isOwner) {
+      setApprovalMessage('');
+      return;
+    }
+    if (!isApproved && isPendingSelf) {
+      setApprovalMessage('オーナーの承認待ちです。承認されるまで操作できません。');
+    } else if (!isApproved) {
+      setApprovalMessage('オーナーの承認が必要です。参加リクエストを送信しました。');
+    } else {
+      setApprovalMessage('');
+    }
+  }, [activeMode, isOwner, isApproved, isPendingSelf]);
   const availableIcons = [...userIconLibrary, ...PRESET_ICONS];
   const isMarkerVisible = (markerId) => markerVisibility[markerId] !== false;
   const markerCounts = useMemo(() => {
@@ -725,10 +778,15 @@ export default function App() {
     const roomParam = params.get('room');
     const mapParam = params.get('map');
     const profileParam = params.get('profile');
-    setRoomId(roomParam || null);
-    setRoomMode(roomParam ? 'shared' : 'local');
-    setRoomInput(roomParam || '');
-    if (roomParam) setModeChosen(true);
+    if (roomParam) {
+      setRoomId(roomParam);
+      setRoomMode('shared');
+      setRoomInput(roomParam);
+      setModeChosen(true);
+      try {
+        localStorage.setItem(LAST_SHARED_ROOM_KEY, roomParam);
+      } catch {}
+    }
     if (mapParam && MAP_CONFIG[mapParam]) setCurrentMap(mapParam);
     if (profileParam) setActiveProfile(profileParam);
     const savedLocalPins = localStorage.getItem('tactical_local_pins');
@@ -751,6 +809,80 @@ export default function App() {
     }
   }, []);
 
+  // Room info (owner/allowed/pending)
+  useEffect(() => {
+    if (!useFirebase || !roomId || !db) {
+      setRoomInfo(null);
+      return undefined;
+    }
+    setRoomInfoLoading(true);
+    if (!roomDocRef) return undefined;
+    const unsub = onSnapshot(
+      roomDocRef,
+      (snap) => {
+        setRoomInfo(snap.exists() ? snap.data() : null);
+        setRoomInfoLoading(false);
+      },
+      (err) => {
+        console.error('Room info subscribe error', err);
+        setRoomInfoLoading(false);
+      },
+    );
+    return () => unsub();
+  }, [roomId, useFirebase, db, roomDocRef]);
+
+  // Ensure room doc exists & owner is allowed
+  useEffect(() => {
+    const ensureRoom = async () => {
+      if (!useFirebase || !roomId || !db || !user) return;
+      try {
+        if (!roomInfo) {
+          await setDoc(roomDocRef, {
+            ownerUid: user.uid,
+            allowedUsers: [user.uid],
+            pending: [],
+            createdAt: serverTimestamp(),
+          });
+          return;
+        }
+        // If owner is set, ensure owner is in allowedUsers
+        if (roomInfo.ownerUid === user.uid) {
+          if (!roomInfo.allowedUsers?.includes(user.uid)) {
+            await updateDoc(roomDocRef, { allowedUsers: arrayUnion(user.uid) });
+          }
+        }
+      } catch (err) {
+        console.error('Ensure room failed', err);
+      }
+    };
+    ensureRoom();
+  }, [roomId, db, user, roomInfo, useFirebase]);
+
+  // If visitor is not approved, add to pending
+  useEffect(() => {
+    const sendPending = async () => {
+      if (!useFirebase || !roomId || !db || !user) return;
+      if (!roomInfo) return; // wait until loaded
+      if (roomInfo.ownerUid === user.uid) return;
+      const alreadyAllowed = roomInfo.allowedUsers?.includes(user.uid);
+      const pendingArr = roomInfo.pending || [];
+      const alreadyPending = pendingArr.some((p) => (typeof p === 'string' ? p === user.uid : p?.uid === user.uid));
+      if (!alreadyAllowed && !alreadyPending) {
+        try {
+          await updateDoc(roomDocRef, {
+            pending: arrayUnion({
+              uid: user.uid,
+              name: displayName || 'guest',
+            }),
+          });
+        } catch (err) {
+          console.error('Add pending failed', err);
+        }
+      }
+    };
+    sendPending();
+  }, [roomId, db, user, roomInfo, useFirebase, displayName]);
+
   useEffect(() => {
     const config = MAP_CONFIG[currentMap];
     if (config.layers && config.layers.length > 0) setCurrentLayer(config.layers[0].id);
@@ -761,6 +893,7 @@ export default function App() {
     params.set('map', currentMap);
     params.set('profile', activeProfile);
     if (roomId) params.set('room', roomId);
+    else params.delete('room');
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
   }, [currentMap, activeProfile, roomId]);
@@ -1239,10 +1372,16 @@ export default function App() {
     setRoomId(nextRoomId);
     setRoomMode(nextRoomId ? 'shared' : 'local');
     setRoomInput(nextRoomId || '');
+    try {
+      if (nextRoomId) {
+        localStorage.setItem(LAST_SHARED_ROOM_KEY, nextRoomId);
+      }
+    } catch {}
     setSelectedPinId(null);
     if (!nextRoomId) {
       setSharedPins([]);
       setSharedMapMeta({});
+      setRoomInfo(null);
     }
     const params = new URLSearchParams(window.location.search);
     if (nextRoomId) params.set('room', nextRoomId);
@@ -1292,9 +1431,66 @@ export default function App() {
       .catch(() => alert('Room ID: ' + activeRoomId));
   };
 
+  const approvePending = async (entry) => {
+    if (!isOwner || !roomDocRef) return;
+    try {
+      setActionMessage('許可中...');
+      await updateDoc(roomDocRef, {
+        allowedUsers: arrayUnion(entry.uid),
+        pending: arrayRemove(entry),
+      });
+      setActionMessage(`許可しました: ${entry.name || entry.uid}`);
+    } catch (err) {
+      console.error('Approve failed', err);
+      setActionMessage('許可に失敗しました');
+    } finally {
+      setTimeout(() => setActionMessage(''), 2000);
+    }
+  };
+
+  const rejectPending = async (entry) => {
+    if (!isOwner || !roomDocRef) return;
+    try {
+      setActionMessage('拒否中...');
+      await updateDoc(roomDocRef, {
+        pending: arrayRemove(entry),
+      });
+      setActionMessage(`拒否しました: ${entry.name || entry.uid}`);
+    } catch (err) {
+      console.error('Reject failed', err);
+      setActionMessage('拒否に失敗しました');
+    } finally {
+      setTimeout(() => setActionMessage(''), 2000);
+    }
+  };
+
+  const handleSelectLocal = () => {
+    setShowSharedSetup(false);
+    applyRoomId(null);
+    setModeChosen(true);
+  };
+
+  const handleOpenSharedSetup = () => {
+    setRoomMode('shared');
+    if (!roomInput && lastSharedRoom) setRoomInput(lastSharedRoom);
+    setShowSharedSetup(true);
+  };
+
+  const handleConfirmShared = () => {
+    const target = roomInput.trim() || generateRoomId();
+    applyRoomId(target);
+    setModeChosen(true);
+    setShowSharedSetup(false);
+  };
+
+  const handleCancelShared = () => {
+    setShowSharedSetup(false);
+    setRoomMode('local');
+  };
+
   return (
     !modeChosen ? (
-      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-gray-100 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-gray-100 flex items-center justify-center p-6 relative">
         <div className="max-w-5xl w-full space-y-8 text-center">
           <div>
             <div className="text-3xl font-extrabold text-indigo-300 mb-2">モード選択</div>
@@ -1302,10 +1498,7 @@ export default function App() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
-              onClick={() => {
-                applyRoomId(null);
-                setModeChosen(true);
-              }}
+              onClick={handleSelectLocal}
               className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition shadow-lg flex flex-col items-center gap-3"
             >
               <div className="p-4 rounded-full bg-indigo-600/20 text-indigo-300">
@@ -1320,11 +1513,7 @@ export default function App() {
               </div>
             </button>
             <button
-              onClick={() => {
-                const next = roomInput.trim() || roomId || generateRoomId();
-                applyRoomId(next);
-                setModeChosen(true);
-              }}
+              onClick={handleOpenSharedSetup}
               className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-purple-500 transition shadow-lg flex flex-col items-center gap-3"
             >
               <div className="p-4 rounded-full bg-purple-600/20 text-purple-300">
@@ -1340,9 +1529,106 @@ export default function App() {
             </button>
           </div>
         </div>
+        {showSharedSetup && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-3">
+              <div className="text-lg font-bold text-purple-200 flex items-center gap-2">
+                <Users size={18} /> 共有ルームに参加 / 発行
+              </div>
+              <div className="text-sm text-gray-400">
+                ルームIDを入力するか、発行ボタンで新しいIDを生成してください。
+              </div>
+              <input
+                value={roomInput}
+                onChange={(e) => setRoomInput(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                placeholder="ルームIDを入力"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRoomInput(generateRoomId())}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-sm text-white py-2 rounded"
+                >
+                  ルームID発行
+                </button>
+                <button
+                  onClick={() => {
+                    if (lastSharedRoom) setRoomInput(lastSharedRoom);
+                  }}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-sm text-white py-2 rounded disabled:opacity-40"
+                  disabled={!lastSharedRoom}
+                >
+                  前回のIDを使う
+                </button>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={handleCancelShared}
+                  className="px-4 py-2 text-sm bg-slate-800 hover:bg-slate-700 rounded text-gray-200"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleConfirmShared}
+                  className="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-500 rounded text-white font-semibold"
+                >
+                  開始する
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     ) : (
     <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative">
+      {actionMessage && (
+        <div className="absolute top-2 left-2 z-50 bg-blue-900/80 text-xs px-3 py-2 rounded shadow">
+          {actionMessage}
+        </div>
+      )}
+      {isOwner && normalizedPending.length > 0 && (
+        <div className="absolute top-2 right-2 z-50 bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3 w-72">
+          <div className="text-sm font-bold mb-2">承認待ち ({normalizedPending.length})</div>
+          <div className="space-y-2 max-h-60 overflow-auto">
+            {normalizedPending.map((p) => (
+              <div key={p.uid} className="flex items-center justify-between bg-slate-900/80 px-2 py-1 rounded">
+                <div className="text-xs">
+                  <div className="font-semibold text-gray-100">{p.name || p.uid}</div>
+                  <div className="text-[10px] text-gray-400 break-all">{p.uid}</div>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => approvePending(p)}
+                    className="text-[10px] bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
+                  >
+                    許可
+                  </button>
+                  <button
+                    onClick={() => rejectPending(p)}
+                    className="text-[10px] bg-red-800 hover:bg-red-700 text-white px-2 py-1 rounded"
+                  >
+                    拒否
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {activeMode === 'shared' && !isOwner && !isApproved && (
+        <div className="absolute inset-0 z-40 bg-black/70 flex flex-col items-center justify-center text-center px-6">
+          <div className="text-xl font-bold mb-2">オーナーの承認が必要です</div>
+          <div className="text-sm text-gray-300 mb-4">
+            {approvalMessage || '承認されるまで操作できません。しばらくお待ちください。'}
+          </div>
+          <button
+            onClick={() => applyRoomId(null)}
+            className="bg-slate-800 hover:bg-slate-700 text-white text-sm px-4 py-2 rounded shadow"
+          >
+            ローカルに戻る
+          </button>
+        </div>
+      )}
       {!useFirebase && (
         <div className="absolute top-2 right-2 z-50 bg-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow">
           Firebase disabled (local demo mode)
