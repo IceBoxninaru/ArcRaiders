@@ -1860,12 +1860,17 @@ export default function App() {
             </div>
             <div className="flex gap-2">
               <div className="flex-1 flex items-center gap-2">
-                <select
+                                <select
                   value={roomMode}
                   onChange={(e) => {
                     const mode = e.target.value;
                     setRoomMode(mode);
-                    if (mode === 'local') applyRoomId(null);
+                    if (mode === "local") {
+                      applyRoomId(null);
+                      setModeChosen(true);
+                    } else if (mode === "shared") {
+                      setShowSharedSetup(true);
+                    }
                   }}
                   className="w-24 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
                 >
@@ -1876,19 +1881,33 @@ export default function App() {
                   value={roomInput}
                   onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
                   placeholder="ROOM ID"
-                  disabled={roomMode === 'local'}
+                  disabled={roomMode === "local" || (roomMode === "shared" && modeChosen)}
                   className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 disabled:opacity-50"
                 />
                 <button
                   onClick={() => {
-                    if (roomMode === 'local') return applyRoomId(null);
-                    const next = roomInput.trim() || generateRoomId();
-                    applyRoomId(next);
+                    if (roomMode === "local") {
+                      applyRoomId(null);
+                      setModeChosen(true);
+                      return;
+                    }
+                    setShowSharedSetup(true);
                   }}
                   className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
-                  disabled={roomMode === 'local'}
+                  disabled={roomMode === "local"}
                 >
-                  接続/生成
+                  接続/発行
+                </button>
+                <button
+                  onClick={() => {
+                    setModeChosen(false);
+                    setRoomMode("local");
+                    setRoomId(null);
+                    setRoomInput(lastSharedRoom || "");
+                  }}
+                  className="px-2 py-1 text-xs bg-slate-800 border border-slate-700 text-gray-200 rounded hover:bg-slate-700"
+                >
+                  モード選択へ
                 </button>
               </div>
             </div>
@@ -2403,5 +2422,6 @@ export default function App() {
     )
   );
 }
+
 
 
