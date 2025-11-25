@@ -962,7 +962,11 @@ export default function App() {
 
   const handleMapClick = async (e) => {
     if (isDragging) return;
-    if (activeMode === 'shared' && !user) return;
+    // 共有モードでユーザー/Room未接続なら弾く
+    if (activeMode === 'shared' && (!user || !roomId)) {
+      alert('共有モードでピンを置くにはRoom接続とサインインが必要です。左のRoom欄で接続してください。');
+      return;
+    }
 
     if (selectedPinId) {
       setSelectedPinId(null);
