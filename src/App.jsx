@@ -570,6 +570,7 @@ export default function App() {
   const [roomInput, setRoomInput] = useState(lastSharedRoom || '');
   const [modeChosen, setModeChosen] = useState(false);
   const [showSharedSetup, setShowSharedSetup] = useState(false);
+  const [roomCreator, setRoomCreator] = useState(false);
   const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
   const [newProfileName, setNewProfileName] = useState('');
   const [renameProfileName, setRenameProfileName] = useState('');
@@ -599,9 +600,11 @@ export default function App() {
   const isApproved = useMemo(() => {
     // ローカルは常にOK
     if (activeMode !== 'shared') return true;
-    // 共有だがまだ情報がない場合はオーナーが確定するまで暫定で許可
-    if (!roomId || !user) return false;
+    // 共有だがまだ情報がない場合は暫定で許可（画面をブロックしない）
+    if (!roomId) return false;
     if (!roomInfo) return true;
+    // ユーザー未確定でもブロックしない（匿名認証待ちの間も動けるように）
+    if (!user) return true;
     if (roomInfo.ownerUid === user.uid) return true;
     return allowedUsers.includes(user.uid);
   }, [activeMode, roomId, user, roomInfo, allowedUsers]);
@@ -788,6 +791,7 @@ export default function App() {
     if (roomParam) {
       setRoomId(roomParam);
       setRoomMode('shared');
+      setRoomCreator(false);
       setRoomInput(roomParam);
       setModeChosen(true);
       try {
@@ -1375,9 +1379,11 @@ export default function App() {
   const [imgError, setImgError] = useState(false);
   useEffect(() => setImgError(false), [currentMap, currentLayer, localImages]);
 
-  const applyRoomId = (nextRoomId) => {
+  const applyRoomId = (nextRoomId, opts = {}) => {
+    const { creator = false } = opts;
     setRoomId(nextRoomId);
     setRoomMode(nextRoomId ? 'shared' : 'local');
+    setRoomCreator(Boolean(nextRoomId) && creator);
     setRoomInput(nextRoomId || '');
     try {
       if (nextRoomId) {
@@ -1485,7 +1491,8 @@ export default function App() {
 
   const handleConfirmShared = () => {
     const target = roomInput.trim() || generateRoomId();
-    applyRoomId(target);
+    applyRoomId(target, { creator: true });
+    setRoomCreator(true);
     setModeChosen(true);
     setShowSharedSetup(false);
   };
