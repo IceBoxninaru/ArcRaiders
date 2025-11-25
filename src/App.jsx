@@ -1148,6 +1148,14 @@ export default function App() {
   const mapMeta = activeMode === 'shared' ? sharedMapMeta : localMapMeta;
   const currentMapMeta = mapMeta[currentMap] || { title: '', note: '', profiles: ['default'] };
   const profiles = currentMapMeta.profiles && currentMapMeta.profiles.length > 0 ? currentMapMeta.profiles : ['default'];
+  const setMapMetaForMode = (mapId, updater) => {
+    if (activeMode === 'shared') {
+      setSharedMapMeta((prevMeta) => (typeof updater === 'function' ? updater(prevMeta) : updater));
+    } else {
+      setLocalMapMeta((prevMeta) => (typeof updater === 'function' ? updater(prevMeta) : updater));
+    }
+  };
+
   useEffect(() => {
     if (!profiles.includes(activeProfile)) {
       setActiveProfile(profiles[0] || 'default');
@@ -1157,6 +1165,11 @@ export default function App() {
     const trimmed = (name || '').trim();
     if (!trimmed) return;
     const list = Array.from(new Set([...profiles, trimmed]));
+    // 即時にメタへ反映
+    setMapMetaForMode(currentMap, (prev) => {
+      const meta = prev[currentMap] || {};
+      return { ...prev, [currentMap]: { ...meta, profiles: list } };
+    });
     updateMapMeta(currentMap, { profiles: list });
     setActiveProfile(trimmed);
   };
@@ -1389,6 +1402,7 @@ export default function App() {
                     id: undefined,
                     createdAt: serverTimestamp(),
                     profileId: candidate,
+                    note: p.note || '',
                   });
                 });
               }
@@ -1403,6 +1417,10 @@ export default function App() {
               if (profiles.length <= 1) return;
               const target = activeProfile;
               const nextList = profiles.filter((p) => p !== target);
+              setMapMetaForMode(currentMap, (prev) => {
+                const meta = prev[currentMap] || {};
+                return { ...prev, [currentMap]: { ...meta, profiles: nextList } };
+              });
               updateMapMeta(currentMap, { profiles: nextList });
               setActiveProfile(nextList[0] || 'default');
               if (activeMode === 'local') {
