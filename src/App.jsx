@@ -556,7 +556,6 @@ export default function App() {
   const [displayName, setDisplayName] = useState('');
   const [roomMode, setRoomMode] = useState(roomId ? 'shared' : 'local'); // local or shared
   const [roomInput, setRoomInput] = useState(roomId || '');
-  const [viewMode, setViewMode] = useState('map'); // map only (list removed)
   const [modeChosen, setModeChosen] = useState(Boolean(roomId));
   const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
   const [newProfileName, setNewProfileName] = useState('');
@@ -1192,8 +1191,6 @@ export default function App() {
     window.history.replaceState({}, '', newUrl);
   };
 
-  const applyViewMode = () => {}; // listビューは削除
-
   // Map metadata handling
   const updateMapMeta = async (mapId, partial) => {
     const prev = mapMeta[mapId] || {};
@@ -1246,7 +1243,6 @@ export default function App() {
               onClick={() => {
                 applyRoomId(null);
                 setModeChosen(true);
-                applyViewMode('map');
               }}
               className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition shadow-lg flex flex-col items-center gap-3"
             >
@@ -1266,7 +1262,6 @@ export default function App() {
                 const next = roomInput.trim() || roomId || generateRoomId();
                 applyRoomId(next);
                 setModeChosen(true);
-                applyViewMode('map');
               }}
               className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-purple-500 transition shadow-lg flex flex-col items-center gap-3"
             >
@@ -1367,12 +1362,71 @@ export default function App() {
             追加
           </button>
           <button
-            onClick={() => applyViewMode('list')}
-            className="px-3 py-1 text-xs font-medium rounded border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 whitespace-nowrap"
+            onClick={() => {
+              const base = activeProfile || 'default';
+              let suffix = 1;
+              let candidate = `${base}_copy`;
+              while (profiles.includes(candidate)) {
+                suffix += 1;
+                candidate = `${base}_copy${suffix}`;
+              }
+              const sourcePins = (activeMode === 'shared' ? sharedPins : localPins).filter(
+                (p) => (p.profileId || 'default') === base && p.mapId === currentMap,
+              );
+              addProfile(candidate);
+              if (activeMode === 'local') {
+                const copied = sourcePins.map((p) => ({
+                  ...p,
+                  id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  profileId: candidate,
+                  createdAt: new Date(),
+                }));
+                setLocalPins((prev) => [...prev, ...copied]);
+              } else {
+                sourcePins.forEach((p) => {
+                  addDoc(collection(db, 'artifacts', appId, 'public', 'data', `${roomId}_pins`), {
+                    ...p,
+                    id: undefined,
+                    createdAt: serverTimestamp(),
+                    profileId: candidate,
+                  });
+                });
+              }
+              setActiveProfile(candidate);
+            }}
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
           >
-            マップ一覧
+            コピー
           </button>
-
+          <button
+            onClick={async () => {
+              if (profiles.length <= 1) return;
+              const target = activeProfile;
+              const nextList = profiles.filter((p) => p !== target);
+              updateMapMeta(currentMap, { profiles: nextList });
+              setActiveProfile(nextList[0] || 'default');
+              if (activeMode === 'local') {
+                setLocalPins((prev) =>
+                  prev.filter(
+                    (p) => !(p.mapId === currentMap && (p.profileId || 'default') === target),
+                  ),
+                );
+              } else {
+                const toDelete = sharedPins.filter(
+                  (p) => p.mapId === currentMap && (p.profileId || 'default') === target,
+                );
+                const collectionName = `${roomId}_pins`;
+                await Promise.allSettled(
+                  toDelete.map((p) =>
+                    deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, p.id)),
+                  ),
+                );
+              }
+            }}
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+          >
+            削除
+          </button>
           <button
             onClick={() => setSelectedTool('custom_pin')}
             className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded border transition-all whitespace-nowrap ${
