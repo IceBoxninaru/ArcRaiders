@@ -558,19 +558,6 @@ export default function App() {
   const [deleteIconTargetId, setDeleteIconTargetId] = useState('');
   const [approvalMessage, setApprovalMessage] = useState('');
   const [actionMessage, setActionMessage] = useState('');
-  const pendingEntries = roomInfo?.pending || [];
-  const normalizedPending = useMemo(
-    () =>
-      pendingEntries.map((p) =>
-        typeof p === 'string' ? { uid: p, name: p } : { uid: p?.uid, name: p?.name || p?.uid || 'guest' },
-      ),
-    [pendingEntries],
-  );
-  const isPendingSelf = useMemo(
-    () => Boolean(user && normalizedPending.find((p) => p.uid === user.uid)),
-    [user, normalizedPending],
-  );
-
   const [selectedTool, setSelectedTool] = useState('move');
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.4 });
   const [iconBaseScale, setIconBaseScale] = useState(1.0);
@@ -593,6 +580,18 @@ export default function App() {
   const roomDocRef = useMemo(
     () => (db && roomId ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId) : null),
     [db, roomId],
+  );
+  const pendingEntries = roomInfo?.pending || [];
+  const normalizedPending = useMemo(
+    () =>
+      pendingEntries.map((p) =>
+        typeof p === 'string' ? { uid: p, name: p } : { uid: p?.uid, name: p?.name || p?.uid || 'guest' },
+      ),
+    [pendingEntries],
+  );
+  const isPendingSelf = useMemo(
+    () => Boolean(user && normalizedPending.find((p) => p.uid === user.uid)),
+    [user, normalizedPending],
   );
   const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
   const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
