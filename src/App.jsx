@@ -1555,74 +1555,74 @@ export default function App() {
 
   return (
     !modeChosen ? (
-      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-gray-100 flex items-center justify-center p-6 relative">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 via-gray-100 to-gray-200 text-gray-900 flex items-center justify-center p-6 relative">
         <div className="max-w-5xl w-full space-y-8 text-center">
           <div>
-            <div className="text-3xl font-extrabold text-indigo-300 mb-2">モード選択</div>
-            <div className="text-sm text-gray-400">アプリケーションの実行環境を選択してください</div>
+            <div className="text-3xl font-extrabold text-gray-800 mb-2">モード選択</div>
+            <div className="text-sm text-gray-500">アプリケーションの実行環境を選択してください</div>
           </div>
           <div className="max-w-md mx-auto space-y-2 text-left">
-            <label className="text-xs text-gray-400">記載者名</label>
+            <label className="text-xs text-gray-600">記載者名</label>
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
               placeholder="名前を入力"
-              className={`w-full bg-slate-800 border ${modeError ? 'border-red-500' : 'border-slate-700'} rounded px-3 py-2 text-sm text-gray-100`}
+              className={`w-full bg-white border ${modeError ? 'border-red-500' : 'border-gray-400'} rounded px-3 py-2 text-sm text-gray-900`}
             />
-            {modeError && <div className="text-xs text-red-400">{modeError}</div>}
+            {modeError && <div className="text-xs text-red-500">{modeError}</div>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
               onClick={handleSelectLocal}
-              className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition shadow-lg flex flex-col items-center gap-3"
+              className="p-6 rounded-2xl bg-white border border-gray-400 hover:border-gray-700 transition shadow flex flex-col items-center gap-3"
             >
-              <div className="p-4 rounded-full bg-indigo-600/20 text-indigo-300">
+              <div className="p-4 rounded-full bg-gray-200 text-gray-700">
                 <User size={32} />
               </div>
               <div className="text-xl font-bold">ローカル</div>
-              <div className="text-sm text-gray-400 leading-relaxed">
+              <div className="text-sm text-gray-500 leading-relaxed">
                 自分の端末内だけで完結します。通信を行わず、個人的に使用する場合に最適です。
               </div>
               <div className="text-xs text-gray-500 flex items-center gap-2 mt-2">
-                <span className="h-2 w-2 rounded-full bg-green-400"></span> オフライン動作
+                <span className="h-2 w-2 rounded-full bg-gray-600"></span> オフライン動作
               </div>
             </button>
             <button
               onClick={handleOpenSharedSetup}
-              className="p-6 rounded-2xl bg-slate-900 border border-slate-700 hover:border-purple-500 transition shadow-lg flex flex-col items-center gap-3"
+              className="p-6 rounded-2xl bg-white border border-gray-400 hover:border-gray-700 transition shadow flex flex-col items-center gap-3"
             >
-              <div className="p-4 rounded-full bg-purple-600/20 text-purple-300">
+              <div className="p-4 rounded-full bg-gray-200 text-gray-700">
                 <Users size={32} />
               </div>
               <div className="text-xl font-bold">共有（オンライン）</div>
-              <div className="text-sm text-gray-400 leading-relaxed">
+              <div className="text-sm text-gray-500 leading-relaxed">
                 データをクラウドで同期します。チームや友人と情報を共有する場合に最適です。
               </div>
               <div className="text-xs text-gray-500 flex items-center gap-2 mt-2">
-                <span className="h-2 w-2 rounded-full bg-blue-400"></span> インターネット接続が必要
+                <span className="h-2 w-2 rounded-full bg-gray-600"></span> インターネット接続が必要
               </div>
             </button>
           </div>
         </div>
         {showSharedSetup && (
-          <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-3">
-              <div className="text-lg font-bold text-purple-200 flex items-center gap-2">
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4">
+            <div className="bg-white border border-gray-300 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-3 text-gray-900">
+              <div className="text-lg font-bold flex items-center gap-2">
                 <Users size={18} /> 共有ルームに参加 / 発行
               </div>
-              <div className="text-sm text-gray-400">
+              <div className="text-sm text-gray-600">
                 ルームIDを入力するか、発行ボタンで新しいIDを生成してください。
               </div>
               <input
                 value={roomInput}
                 onChange={(e) => setRoomInput(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm"
+                className="w-full bg-white border border-gray-400 rounded px-3 py-2 text-sm"
                 placeholder="ルームIDを入力"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => setRoomInput(generateRoomId())}
-                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-sm text-white py-2 rounded"
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-sm text-white py-2 rounded"
                 >
                   ルームID発行
                 </button>
@@ -1630,7 +1630,7 @@ export default function App() {
                   onClick={() => {
                     if (lastSharedRoom) setRoomInput(lastSharedRoom);
                   }}
-                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-sm text-white py-2 rounded disabled:opacity-40"
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-sm text-gray-900 py-2 rounded disabled:opacity-40"
                   disabled={!lastSharedRoom}
                 >
                   前回のIDを使う
@@ -1639,13 +1639,13 @@ export default function App() {
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={handleCancelShared}
-                  className="px-4 py-2 text-sm bg-slate-800 hover:bg-slate-700 rounded text-gray-200"
+                  className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
                 >
                   キャンセル
                 </button>
                 <button
                   onClick={handleConfirmShared}
-                  className="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-500 rounded text-white font-semibold"
+                  className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded text-white font-semibold"
                 >
                   開始する
                 </button>
