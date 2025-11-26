@@ -1472,24 +1472,37 @@ export default function App() {
         allowTaint: true,
         useCORS: true,
         logging: false,
-        windowHeight: height,
-        windowWidth: width,
-        width: width,
-        height: height,
       });
 
-      // 余分な部分をトリミング（表示領域のみを保持）
-      const ctx = canvas.getContext('2d');
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // マップの中心を計算
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
 
-      // トリミング後のCanvasを作成
-      const trimmedCanvas = document.createElement('canvas');
-      trimmedCanvas.width = canvas.width;
-      trimmedCanvas.height = canvas.height;
-      trimmedCanvas.getContext('2d').putImageData(imageData, 0, 0);
+      // キャプチャサイズ（正方形、中心から上下左右に拡張）
+      const captureSize = Math.min(canvas.width, canvas.height);
+      const startX = Math.max(0, centerX - captureSize / 2);
+      const startY = Math.max(0, centerY - captureSize / 2);
+
+      // 中心基準のクロップ用Canvas
+      const croppedCanvas = document.createElement('canvas');
+      croppedCanvas.width = captureSize;
+      croppedCanvas.height = captureSize;
+
+      const ctx = croppedCanvas.getContext('2d');
+      ctx.drawImage(
+        canvas,
+        startX,
+        startY,
+        captureSize,
+        captureSize,
+        0,
+        0,
+        captureSize,
+        captureSize
+      );
 
       // CanvasをBlobに変換
-      trimmedCanvas.toBlob((blob) => {
+      croppedCanvas.toBlob((blob) => {
         // ダウンロードリンクを作成
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
