@@ -1483,32 +1483,62 @@ export default function App() {
         logging: false,
       });
 
-      // マップの中心を計算
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
+      // 黒い領域を自動的に検出してトリミング
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
 
-      // キャプチャサイズ（正方形、中心から上下左右に拡張）
-      const captureSize = Math.min(canvas.width, canvas.height);
-      const startX = Math.max(0, centerX - captureSize / 2);
-      const startY = Math.max(0, centerY - captureSize / 2);
+      let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+      let foundNonBlack = false;
 
-      // 中心基準のクロップ用Canvas
+      // 非黒色ピクセルの範囲を検出
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        // 黒色以外（ある程度の輝度）のピクセルを検出
+        if (r > 20 || g > 20 || b > 20) {
+          const pixelIndex = i / 4;
+          const x = pixelIndex % canvas.width;
+          const y = Math.floor(pixelIndex / canvas.width);
+
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+          foundNonBlack = true;
+        }
+      }
+
+      // トリミング領域を計算（パディング追加）
+      const padding = 20;
+      const cropX = Math.max(0, minX - padding);
+      const cropY = Math.max(0, minY - padding);
+      const cropWidth = Math.min(canvas.width - cropX, maxX - minX + padding * 2);
+      const cropHeight = Math.min(canvas.height - cropY, maxY - minY + padding * 2);
+
+      // トリミング後のCanvasを作成
       const croppedCanvas = document.createElement('canvas');
-      croppedCanvas.width = captureSize;
-      croppedCanvas.height = captureSize;
+      croppedCanvas.width = cropWidth;
+      croppedCanvas.height = cropHeight;
 
-      const ctx = croppedCanvas.getContext('2d');
-      ctx.drawImage(
-        canvas,
-        startX,
-        startY,
-        captureSize,
-        captureSize,
-        0,
-        0,
-        captureSize,
-        captureSize
-      );
+      const croppedCtx = croppedCanvas.getContext('2d');
+      if (foundNonBlack && cropWidth > 0 && cropHeight > 0) {
+        croppedCtx.drawImage(
+          canvas,
+          cropX,
+          cropY,
+          cropWidth,
+          cropHeight,
+          0,
+          0,
+          cropWidth,
+          cropHeight
+        );
+      } else {
+        // 非黒色が見つからない場合は元のキャンバスを使用
+        croppedCtx.drawImage(canvas, 0, 0);
+      }
 
       // CanvasをBlobに変換
       croppedCanvas.toBlob((blob) => {
