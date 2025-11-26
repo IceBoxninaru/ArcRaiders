@@ -377,35 +377,9 @@ const TacticalGrid = ({ config, onUpload }) => (
   </div>
 );
 
-const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onUpdateNote, onDelete, onMark }) => {
-  const fileInputRef = useRef(null);
-  const iconInputRef = useRef(null);
+const PinPopup = ({ pin, markerDef, onClose, onUpdateNote, onDelete, onMark }) => {
   const categoryDef = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
   const [noteDraft, setNoteDraft] = useState(pin.note || '');
-
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const compressedBase64 = await compressImage(file);
-      onUpdateImage(pin.id, compressedBase64);
-    } catch (err) {
-      console.error('Image upload failed', err);
-      alert('画像の処理に失敗しました');
-    }
-  };
-
-  const handleIconUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !onUpdateIcon) return;
-    try {
-      const compressedBase64 = await compressImage(file, 128);
-      onUpdateIcon(pin.id, compressedBase64);
-    } catch (err) {
-      console.error('Icon upload failed', err);
-      alert('アイコンの処理に失敗しました');
-    }
-  };
 
   return (
     <div
@@ -417,41 +391,6 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateIcon, onUpda
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="relative h-40 bg-gray-800 flex items-center justify-center overflow-hidden group">
-        {pin.imageUrl ? (
-          <img src={pin.imageUrl} alt="Pin Attachment" className="w-full h-full object-cover" />
-        ) : (
-          <div className="flex flex-col items-center text-gray-500">
-            <Camera size={32} className="mb-2 opacity-50" />
-            <span className="text-xs">No Image</span>
-          </div>
-        )}
-
-        <div
-          className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <div className="text-center">
-            <Upload className="mx-auto mb-1 text-white" size={24} />
-            <span className="text-xs font-bold text-white">画像を追加/変更</span>
-          </div>
-        </div>
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          accept="image/*"
-          onChange={handleImageUpload}
-        />
-        <input
-          type="file"
-          ref={iconInputRef}
-          className="hidden"
-          accept="image/*"
-          onChange={handleIconUpload}
-        />
-      </div>
-
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <div>
@@ -1211,40 +1150,6 @@ export default function App() {
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId));
       if (selectedPinId === pinId) setSelectedPinId(null);
       setMarkedPinIds((prev) => prev.filter((id) => id !== pinId));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const updatePinImage = async (pinId, base64Image) => {
-    if (!user && activeMode === 'shared') return;
-    if (!canSync || activeMode === 'local') {
-      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, imageUrl: base64Image } : p)));
-      return;
-    }
-    if (!roomId) return;
-    const collectionName = `${roomId}_pins`;
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId), {
-        imageUrl: base64Image,
-      });
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  const updatePinIcon = async (pinId, base64Icon) => {
-    if (!user && activeMode === 'shared') return;
-    addIconToLibrary(base64Icon);
-    if (!canSync || activeMode === 'local') {
-      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, iconUrl: base64Icon } : p)));
-      return;
-    }
-    if (!roomId) return;
-    const collectionName = `${roomId}_pins`;
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId), {
-        iconUrl: base64Icon,
-      });
     } catch (err) {
       console.error(err);
     }
@@ -2264,12 +2169,10 @@ export default function App() {
               if (!pin) return null;
             const markerDef = mergedMarkers[pin.type] || FALLBACK_MARKER;
             return (
-              <PinPopup 
-                pin={pin} 
-                markerDef={markerDef} 
+              <PinPopup
+                pin={pin}
+                markerDef={markerDef}
                   onClose={() => setSelectedPinId(null)}
-                  onUpdateImage={updatePinImage}
-                  onUpdateIcon={updatePinIcon}
                   onUpdateNote={updatePinNote}
                   onMark={(id) => {
                     setMarkedPinIds((prev) =>
