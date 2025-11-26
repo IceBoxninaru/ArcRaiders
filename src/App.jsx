@@ -1114,6 +1114,9 @@ export default function App() {
   const handleMouseUp = () => setIsDragging(false);
 
   const handleMapClick = async (e) => {
+    // ピン要素がクリックされた場合はスキップ
+    if (e.target.closest('.pin-element')) return;
+
     if (isDragging) return;
     // 共有モードでユーザー/Room未接続ならサインインを試みて中断
     if (activeMode === 'shared' && (!user || !roomId)) {
@@ -2173,7 +2176,7 @@ export default function App() {
               return (
                 <div
                   key={pin.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-200"
+                  className="pin-element absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-200"
                   style={{
                     left: pin.x,
                     top: pin.y,
