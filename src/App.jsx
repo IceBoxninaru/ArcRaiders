@@ -1871,23 +1871,9 @@ export default function App() {
             </div>
             <div className="flex gap-2">
               <div className="flex-1 flex items-center gap-2">
-                                <select
-                  value={roomMode}
-                  onChange={(e) => {
-                    const mode = e.target.value;
-                    setRoomMode(mode);
-                    if (mode === "local") {
-                      applyRoomId(null);
-                      setModeChosen(true);
-                    } else if (mode === "shared") {
-                      setShowSharedSetup(true);
-                    }
-                  }}
-                  className="w-24 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
-                >
-                  <option value="local">ローカル</option>
-                  <option value="shared">共有</option>
-                </select>
+                <div className="w-24 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 flex items-center justify-center font-bold">
+                  {roomMode === "local" ? "ローカル" : "共有"}
+                </div>
                 <input
                   value={roomInput}
                   onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
