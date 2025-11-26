@@ -377,9 +377,22 @@ const TacticalGrid = ({ config, onUpload }) => (
   </div>
 );
 
-const PinPopup = ({ pin, markerDef, onClose, onUpdateNote, onDelete, onMark }) => {
+const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDelete, onMark }) => {
   const categoryDef = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
   const [noteDraft, setNoteDraft] = useState(pin.note || '');
+  const fileInputRef = useRef(null);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const compressedBase64 = await compressImage(file);
+      onUpdateImage(pin.id, compressedBase64);
+    } catch (err) {
+      console.error('Image upload failed', err);
+      alert('画像の処理に失敗しました');
+    }
+  };
 
   return (
     <div
@@ -391,16 +404,27 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateNote, onDelete, onMark }) =
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="relative h-40 bg-gray-800 flex items-center justify-center overflow-hidden">
+      <div
+        className="relative h-40 bg-gray-800 flex items-center justify-center overflow-hidden cursor-pointer group hover:bg-gray-700 transition-colors"
+        onClick={() => fileInputRef.current?.click()}
+      >
         {pin.imageUrl ? (
           <img src={pin.imageUrl} alt="Pin Attachment" className="w-full h-full object-cover" />
         ) : (
-          <div className="flex flex-col items-center text-gray-500">
+          <div className="flex flex-col items-center text-gray-500 group-hover:text-gray-400">
             <Camera size={32} className="mb-2 opacity-50" />
             <span className="text-xs">No Image</span>
           </div>
         )}
       </div>
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept="image/*"
+        onChange={handleImageUpload}
+      />
 
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
@@ -523,6 +547,7 @@ export default function App() {
     () => (db && roomId ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId) : null),
     [db, roomId],
   );
+  const [modeError, setModeError] = useState('');
   const pendingEntries = roomInfo?.pending || [];
   const normalizedPending = useMemo(
     () =>
@@ -1343,7 +1368,7 @@ export default function App() {
   const copyRoomLink = () => {
     const activeRoomId = roomId || generateRoomId();
     if (!roomId) {
-      applyRoomId(activeRoomId);
+      applyRoomId(activeRoomId, { creator: true });
     }
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoomId}`;
     navigator.clipboard
@@ -1501,9 +1526,15 @@ export default function App() {
     setShowSharedSetup(false);
     applyRoomId(null);
     setModeChosen(true);
+    setModeError('');
   };
 
   const handleOpenSharedSetup = () => {
+    if (!displayName.trim()) {
+      setModeError('記載者名を入力してください');
+      return;
+    }
+    setModeError('');
     setRoomMode('shared');
     if (!roomInput && lastSharedRoom) setRoomInput(lastSharedRoom);
     setShowSharedSetup(true);
@@ -1529,6 +1560,16 @@ export default function App() {
           <div>
             <div className="text-3xl font-extrabold text-indigo-300 mb-2">モード選択</div>
             <div className="text-sm text-gray-400">アプリケーションの実行環境を選択してください</div>
+          </div>
+          <div className="max-w-md mx-auto space-y-2 text-left">
+            <label className="text-xs text-gray-400">記載者名</label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
+              placeholder="名前を入力"
+              className={`w-full bg-slate-800 border ${modeError ? 'border-red-500' : 'border-slate-700'} rounded px-3 py-2 text-sm text-gray-100`}
+            />
+            {modeError && <div className="text-xs text-red-400">{modeError}</div>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
