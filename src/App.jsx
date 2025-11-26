@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import html2canvas from 'html2canvas';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -59,6 +60,7 @@ import {
   Crown,
   Heart,
   EyeOff,
+  Download,
 } from 'lucide-react';
 
 /* ========================================
@@ -1445,6 +1447,47 @@ export default function App() {
       .catch(() => alert('Room ID: ' + activeRoomId));
   };
 
+  const takeScreenshot = async () => {
+    try {
+      if (!mapWrapperRef.current) {
+        alert('マップが見つかりません');
+        return;
+      }
+
+      // マップコンテナをCanvasに変換
+      const canvas = await html2canvas(mapWrapperRef.current, {
+        backgroundColor: '#000000',
+        scale: 2, // 高解像度でキャプチャ
+        allowTaint: true,
+        useCORS: true,
+        logging: false,
+      });
+
+      // CanvasをBlobに変換
+      canvas.toBlob((blob) => {
+        // ダウンロードリンクを作成
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        // ファイル名を生成（マップ名 + タイムスタンプ）
+        const mapName = MAP_CONFIG[currentMap]?.name || 'map';
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        link.download = `${mapName}_${timestamp}.png`;
+
+        link.href = url;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // メモリ解放
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    } catch (error) {
+      console.error('スクリーンショット取得失敗:', error);
+      alert('スクリーンショットの保存に失敗しました');
+    }
+  };
+
   const approvePending = async (entry) => {
     if (!isOwner || !roomDocRef) return;
     try {
@@ -1836,6 +1879,13 @@ export default function App() {
             className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-medium transition-all"
           >
             共有
+          </button>
+          <button
+            onClick={takeScreenshot}
+            className="bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1"
+          >
+            <Download size={14} />
+            スクリーンショット
           </button>
         </div>
       </header>
