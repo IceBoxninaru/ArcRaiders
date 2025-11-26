@@ -7,7 +7,6 @@ arcraiders_workbook_v2.xlsx
 # Node / Vite build artifacts
 node_modules
 dist
-docs
 .vite
 
 .claude/settings.local.json

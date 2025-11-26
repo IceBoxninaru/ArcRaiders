@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tactical Map</title>
+    <!-- Tailwind Play CDN for quick styling without a build step -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Firebase本番設定（Firebaseコンソール「arcraidersmap」のスニペットより）
+      window.__firebase_config = {
+        apiKey: "AIzaSyCF_PUH_E9t-BpTZgmyJkk-ueAlVIBxHfY",
+        authDomain: "arcfaiders.firebaseapp.com",
+        projectId: "arcfaiders",
+        storageBucket: "arcfaiders.firebasestorage.app",
+        messagingSenderId: "353362170816",
+        appId: "1:353362170816:web:61bd1faddfa4f8f87dee25",
+        measurementId: "G-E6BT71G36K",
+      };
+      // Firestoreルールと同じ appId を設定（この文字列をルール側でも使う）
+      window.__app_id = "arcraidersmap";
+      // カスタムトークンを使わないなら空のまま
+      window.__initial_auth_token = "";
+    </script>
+    <script type="module" crossorigin src="./assets/index-Dgz0qiip.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CV9Kh_8s.css">
+  </head>
+  <body class="bg-black text-gray-200">
+    <div id="root"></div>
+  </body>
+</html>
+
