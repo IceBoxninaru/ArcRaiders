@@ -1454,17 +1454,42 @@ export default function App() {
         return;
       }
 
+      const wrapper = mapWrapperRef.current;
+      const rect = wrapper.getBoundingClientRect();
+
+      // 可視領域のサイズを取得
+      const width = Math.ceil(rect.width);
+      const height = Math.ceil(rect.height);
+
+      if (width === 0 || height === 0) {
+        alert('マップが見つかりません');
+        return;
+      }
+
       // マップコンテナをCanvasに変換
-      const canvas = await html2canvas(mapWrapperRef.current, {
-        backgroundColor: '#000000',
+      const canvas = await html2canvas(wrapper, {
         scale: 2, // 高解像度でキャプチャ
         allowTaint: true,
         useCORS: true,
         logging: false,
+        windowHeight: height,
+        windowWidth: width,
+        width: width,
+        height: height,
       });
 
+      // 余分な部分をトリミング（表示領域のみを保持）
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // トリミング後のCanvasを作成
+      const trimmedCanvas = document.createElement('canvas');
+      trimmedCanvas.width = canvas.width;
+      trimmedCanvas.height = canvas.height;
+      trimmedCanvas.getContext('2d').putImageData(imageData, 0, 0);
+
       // CanvasをBlobに変換
-      canvas.toBlob((blob) => {
+      trimmedCanvas.toBlob((blob) => {
         // ダウンロードリンクを作成
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
