@@ -1666,9 +1666,20 @@ export default function App() {
       />
 
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 z-30 shadow-lg shrink-0 gap-4">
-        <div className="flex items-center gap-2 min-w-fit">
+        <div className="flex items-center gap-3 min-w-fit">
           <ShieldAlert className="text-orange-500 w-5 h-5" />
           <h1 className="font-bold text-base tracking-wider text-gray-100">TACTICAL</h1>
+          <button
+            onClick={() => {
+              setModeChosen(false);
+              setRoomMode("local");
+              setRoomId(null);
+              setRoomInput(lastSharedRoom || "");
+            }}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-bold transition-all shadow-md"
+          >
+            モード選択へ
+          </button>
         </div>
 
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1824,17 +1835,6 @@ export default function App() {
             className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-medium transition-all"
           >
             共有
-          </button>
-          <button
-            onClick={() => {
-              setModeChosen(false);
-              setRoomMode("local");
-              setRoomId(null);
-              setRoomInput(lastSharedRoom || "");
-            }}
-            className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-all border border-gray-700"
-          >
-            モード選択へ
           </button>
         </div>
       </header>
