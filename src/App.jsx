@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import html2canvas from 'html2canvas';
 import { initializeApp } from 'firebase/app';
 import {
@@ -61,7 +61,46 @@ import {
   Heart,
   EyeOff,
   Download,
+  Menu,
+  MoreVertical,
+  Home,
+  Share2,
+  ZoomIn,
+  ZoomOut,
+  Copy,
+  Edit3,
 } from 'lucide-react';
+
+/* ========================================
+  RESPONSIVE HOOKS
+  ========================================
+*/
+const useWindowSize = () => {
+  const [size, setSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return size;
+};
+
+const useIsMobile = () => {
+  const { width } = useWindowSize();
+  return width < 768;
+};
+
+const useIsTablet = () => {
+  const { width } = useWindowSize();
+  return width >= 768 && width < 1280;
+};
 
 /* ========================================
   FIREBASE CONFIGURATION
@@ -360,24 +399,24 @@ const TacticalGrid = ({ config, onUpload }) => (
       backgroundSize: '100px 100px',
     }}
   >
-    <div className="text-center p-6 bg-black/50 backdrop-blur rounded-xl border border-gray-700">
-      <ImageIcon size={48} className="mx-auto text-gray-500 mb-4" />
-      <p className="text-gray-300 font-bold mb-2">NO MAP IMAGE</p>
-      <p className="text-gray-500 text-sm mb-4 max-w-xs">
+    <div className="text-center p-4 sm:p-6 bg-black/50 backdrop-blur rounded-xl border border-gray-700 mx-4">
+      <ImageIcon size={36} className="mx-auto text-gray-500 mb-3 sm:mb-4 sm:w-12 sm:h-12" />
+      <p className="text-gray-300 font-bold mb-2 text-sm sm:text-base">NO MAP IMAGE</p>
+      <p className="text-gray-500 text-xs sm:text-sm mb-3 sm:mb-4 max-w-xs">
         セキュリティ制限のため、画像はローカルから選択してください。
       </p>
       <button
         onClick={onUpload}
-        className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded flex items-center gap-2 mx-auto transition-colors"
+        className="bg-orange-600 hover:bg-orange-500 text-white px-3 sm:px-4 py-2 rounded flex items-center gap-2 mx-auto transition-colors text-sm"
       >
-        <Upload size={16} />
+        <Upload size={14} />
         マップ画像を選択
       </button>
     </div>
   </div>
 );
 
-const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDelete, onMark }) => {
+const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDelete, onMark, isMobile }) => {
   const categoryDef = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
   const [noteDraft, setNoteDraft] = useState(pin.note || '');
   const fileInputRef = useRef(null);
@@ -396,23 +435,19 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDele
 
   return (
     <div
-      className="absolute z-[100] bg-gray-900 text-white rounded-lg shadow-2xl border border-gray-700 w-72 overflow-hidden"
-      style={{
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-      }}
+      className={`fixed z-[100] bg-gray-900 text-white rounded-lg shadow-2xl border border-gray-700 overflow-hidden
+        ${isMobile ? 'inset-x-4 bottom-4 top-auto max-h-[70vh]' : 'w-72 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'}`}
       onClick={(e) => e.stopPropagation()}
     >
       <div
-        className="relative h-40 bg-gray-800 flex items-center justify-center overflow-hidden cursor-pointer group hover:bg-gray-700 transition-colors"
+        className={`relative ${isMobile ? 'h-32' : 'h-40'} bg-gray-800 flex items-center justify-center overflow-hidden cursor-pointer group hover:bg-gray-700 transition-colors`}
         onClick={() => fileInputRef.current?.click()}
       >
         {pin.imageUrl ? (
           <img src={pin.imageUrl} alt="Pin Attachment" className="w-full h-full object-cover" />
         ) : (
           <div className="flex flex-col items-center text-gray-500 group-hover:text-gray-400">
-            <Camera size={32} className="mb-2 opacity-50" />
+            <Camera size={28} className="mb-2 opacity-50" />
             <span className="text-xs">No Image</span>
           </div>
         )}
@@ -426,55 +461,477 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDele
         onChange={handleImageUpload}
       />
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4 overflow-y-auto max-h-[40vh]">
         <div className="flex justify-between items-start mb-2">
           <div>
             <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase mb-0.5">
               <markerDef.icon size={12} color={categoryDef.color} />
               {categoryDef.label}
             </div>
-            <h3 className="text-lg font-bold leading-tight">{markerDef.label}</h3>
+            <h3 className="text-base sm:text-lg font-bold leading-tight">{markerDef.label}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <button onClick={onClose} className="text-gray-400 hover:text-white p-1">
             <X size={20} />
           </button>
         </div>
 
-                <div className="text-xs text-gray-500 mb-4">投稿者: <span className="text-gray-300 font-semibold">{pin.createdByName || '不明'}</span> <span className="ml-2 text-gray-600">ID: {pin.id.slice(0, 6)}…</span></div>
-                <div className="flex flex-col gap-2 mb-3">
-                  <label className="text-[10px] text-gray-400">メモ</label>
-                  <textarea
-                    value={noteDraft}
-                    onChange={(e) => setNoteDraft(e.target.value)}
-                    className="w-full h-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
-                    placeholder="ピンに紐づくメモを入力"
-                  />
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => onUpdateNote?.(pin.id, noteDraft)}
-                      className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-200"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </div>
+        <div className="text-xs text-gray-500 mb-3 sm:mb-4">
+          投稿者: <span className="text-gray-300 font-semibold">{pin.createdByName || '不明'}</span>
+          <span className="ml-2 text-gray-600">ID: {pin.id.slice(0, 6)}…</span>
+        </div>
+        
+        <div className="flex flex-col gap-2 mb-3">
+          <label className="text-[10px] text-gray-400">メモ</label>
+          <textarea
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            className="w-full h-16 sm:h-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 resize-none"
+            placeholder="ピンに紐づくメモを入力"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={() => onUpdateNote?.(pin.id, noteDraft)}
+              className="text-xs px-3 py-1.5 rounded bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-200"
+            >
+              保存
+            </button>
+          </div>
+        </div>
 
         <div className="flex gap-2">
           <button
             onClick={() => onMark?.(pin.id)}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded transition-colors flex items-center justify-center gap-2"
+            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2.5 rounded transition-colors flex items-center justify-center gap-2"
           >
             <MapPin size={14} />
-            場所をマークする
+            マークする
           </button>
 
           <button
             onClick={() => onDelete(pin.id)}
-            className="bg-red-900/50 hover:bg-red-900 text-red-200 p-2 rounded transition-colors"
+            className="bg-red-900/50 hover:bg-red-900 text-red-200 p-2.5 rounded transition-colors"
             title="削除"
           >
             <Trash2 size={16} />
           </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ========================================
+  MOBILE SIDEBAR COMPONENT
+  ========================================
+*/
+const MobileSidebar = ({
+  isOpen,
+  onClose,
+  searchTerm,
+  setSearchTerm,
+  openCategories,
+  toggleCategory,
+  mergedMarkers,
+  markerIcons,
+  markerCounts,
+  isMarkerVisible,
+  selectedTool,
+  setSelectedTool,
+  setMarkerVisibility,
+  triggerIconUpload,
+  showAllMarkers,
+  hideAllMarkers,
+  startAddCustomMarker,
+  roomId,
+  roomMode,
+  roomInput,
+  setRoomInput,
+  modeChosen,
+  applyRoomId,
+  setShowSharedSetup,
+  triggerFileUpload,
+}) => {
+  return (
+    <>
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div
+        className={`fixed top-0 left-0 h-full w-72 bg-gray-900/98 backdrop-blur-lg border-r border-gray-800 z-50 transform transition-transform duration-300 ease-in-out md:hidden
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="p-3 border-b border-gray-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="text-orange-500 w-5 h-5" />
+              <span className="font-bold text-white">TACTICAL</span>
+            </div>
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Search & Controls */}
+          <div className="p-3 border-b border-gray-800 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-2 top-1.5 text-gray-500 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="検索..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-black/40 border border-gray-700 rounded pl-8 pr-2 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+            
+            {/* Room ID Section */}
+            <div className="flex items-center gap-2">
+              <div className="w-16 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 flex items-center justify-center font-bold">
+                {roomMode === "local" ? "ローカル" : "共有"}
+              </div>
+              <input
+                value={roomInput}
+                onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
+                placeholder="ROOM ID"
+                disabled={roomMode === "local" || (roomMode === "shared" && modeChosen)}
+                className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 disabled:opacity-50"
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedTool('move')}
+                className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
+                  selectedTool === 'move'
+                    ? 'bg-gray-700 text-white border-gray-500'
+                    : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700'
+                }`}
+              >
+                <Move size={14} />
+                移動
+              </button>
+              <button
+                onClick={triggerFileUpload}
+                className="px-3 py-1.5 rounded bg-gray-800 text-gray-400 border border-gray-700 hover:text-white hover:border-gray-500"
+              >
+                <ImageIcon size={14} />
+              </button>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={showAllMarkers}
+                className="flex-1 py-1.5 rounded bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-xs font-bold"
+              >
+                全て表示
+              </button>
+              <button
+                onClick={hideAllMarkers}
+                className="flex-1 py-1.5 rounded bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700 text-xs font-bold"
+              >
+                全て非表示
+              </button>
+            </div>
+          </div>
+
+          {/* Marker List */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {Object.entries(MARKER_CATEGORIES).map(([catKey, category]) => (
+              <div key={catKey} className="rounded overflow-hidden">
+                <div className="w-full flex items-center justify-between px-2 py-2 bg-gray-800/50 text-xs font-bold text-gray-300">
+                  <button
+                    onClick={() => toggleCategory(catKey)}
+                    className="flex items-center gap-2 flex-1 text-left hover:text-white"
+                  >
+                    <span>{category.label}</span>
+                    {openCategories[catKey] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                  <button
+                    onClick={() => startAddCustomMarker(catKey)}
+                    className="p-1.5 rounded hover:bg-gray-700 text-gray-300 hover:text-white"
+                    title="このカテゴリにピンを追加"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+                {openCategories[catKey] && (
+                  <div className="bg-black/20 p-1 space-y-0.5">
+                    {Object.values(mergedMarkers)
+                      .filter((m) => m.cat === catKey)
+                      .filter((m) => m.label.includes(searchTerm))
+                      .map((marker) => {
+                        const MarkerIcon = marker.icon;
+                        const isActive = selectedTool === marker.id;
+                        const iconImage = markerIcons[marker.id];
+                        const count = markerCounts[marker.id] || 0;
+                        const visible = isMarkerVisible(marker.id);
+                        return (
+                          <div
+                            key={marker.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setSelectedTool(marker.id);
+                              onClose();
+                            }}
+                            className={`w-full flex items-center gap-2 px-2 py-2 rounded text-xs transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-gray-700 text-white ring-1 ring-inset ring-gray-500'
+                                : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                            }`}
+                          >
+                            {iconImage ? (
+                              <img
+                                src={iconImage}
+                                alt={`${marker.label} icon`}
+                                className="w-6 h-6 rounded-full object-cover border border-gray-600/60"
+                              />
+                            ) : (
+                              <MarkerIcon size={18} color={category.color} />
+                            )}
+                            <span className="flex-1 text-left truncate">{marker.label}</span>
+                            <span className="text-[11px] text-gray-400">{count}</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  triggerIconUpload(marker.id);
+                                }}
+                                className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700"
+                                title="アイコン変更"
+                              >
+                                <Camera size={10} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMarkerVisibility((prev) => ({ ...prev, [marker.id]: !visible }));
+                                }}
+                                className={`p-1 rounded border ${
+                                  visible
+                                    ? 'bg-gray-800 text-gray-300 border-gray-700'
+                                    : 'bg-gray-900 text-gray-500 border-gray-800'
+                                }`}
+                              >
+                                <EyeOff size={10} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="p-3 border-t border-gray-800 text-[10px] text-gray-600 text-center">
+            Room: {roomId || 'ローカル'}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+/* ========================================
+  MOBILE HEADER MENU
+  ========================================
+*/
+const MobileHeaderMenu = ({
+  isOpen,
+  onClose,
+  currentMap,
+  setCurrentMap,
+  activeProfile,
+  setActiveProfile,
+  profiles,
+  addProfile,
+  renameProfile,
+  copyProfile,
+  deleteProfile,
+  displayName,
+  setDisplayName,
+  copyRoomLink,
+  takeScreenshot,
+  setModeChosen,
+  roomId,
+  setRoomId,
+  setRoomMode,
+  setRoomInput,
+  lastSharedRoom,
+}) => {
+  const [newProfileName, setNewProfileName] = useState('');
+  const [renameProfileNameLocal, setRenameProfileNameLocal] = useState('');
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 md:hidden">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute top-0 right-0 w-80 h-full bg-gray-900 border-l border-gray-800 overflow-y-auto">
+        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+          <span className="font-bold text-white">メニュー</span>
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Map Selection */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-400">マップ</label>
+            <select
+              value={currentMap}
+              onChange={(e) => {
+                setCurrentMap(e.target.value);
+              }}
+              className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded px-3 py-2"
+            >
+              {Object.values(MAP_CONFIG).map((map) => (
+                <option key={map.id} value={map.id}>
+                  {map.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Profile Selection */}
+          <div className="space-y-2">
+            <label className="text-xs text-gray-400">プロファイル</label>
+            <select
+              value={activeProfile}
+              onChange={(e) => setActiveProfile(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded px-3 py-2"
+            >
+              {profiles.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Profile Management */}
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            <label className="text-xs text-gray-400">プロファイル管理</label>
+            
+            {/* Add Profile */}
+            <div className="flex gap-2">
+              <input
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+                placeholder="新規プロファイル名"
+                className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded px-3 py-2"
+              />
+              <button
+                onClick={() => {
+                  addProfile(newProfileName || `攻略${profiles.length + 1}`);
+                  setNewProfileName('');
+                }}
+                className="px-3 py-2 text-sm rounded bg-orange-600 hover:bg-orange-500 text-white"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            
+            {/* Rename Profile */}
+            <div className="flex gap-2">
+              <input
+                value={renameProfileNameLocal}
+                onChange={(e) => setRenameProfileNameLocal(e.target.value)}
+                placeholder="リネーム"
+                className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded px-3 py-2"
+              />
+              <button
+                onClick={() => {
+                  renameProfile(renameProfileNameLocal);
+                  setRenameProfileNameLocal('');
+                }}
+                className="px-3 py-2 text-sm rounded bg-gray-700 hover:bg-gray-600 text-white"
+              >
+                <Edit3 size={16} />
+              </button>
+            </div>
+            
+            {/* Copy & Delete */}
+            <div className="flex gap-2">
+              <button
+                onClick={copyProfile}
+                className="flex-1 py-2 text-sm rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-1"
+              >
+                <Copy size={14} />
+                コピー
+              </button>
+              <button
+                onClick={deleteProfile}
+                disabled={profiles.length <= 1}
+                className="flex-1 py-2 text-sm rounded bg-red-900/50 hover:bg-red-900 text-red-200 flex items-center justify-center gap-1 disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                削除
+              </button>
+            </div>
+          </div>
+
+          {/* Display Name */}
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            <label className="text-xs text-gray-400">記載者名</label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
+              placeholder="記載者名"
+              className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded px-3 py-2"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            <button
+              onClick={() => {
+                copyRoomLink();
+                onClose();
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium flex items-center justify-center gap-2"
+            >
+              <Share2 size={16} />
+              共有リンクをコピー
+            </button>
+            
+            <button
+              onClick={() => {
+                takeScreenshot();
+                onClose();
+              }}
+              className="w-full bg-green-600 hover:bg-green-500 text-white py-2.5 rounded text-sm font-medium flex items-center justify-center gap-2"
+            >
+              <Download size={16} />
+              スクリーンショット
+            </button>
+
+            <button
+              onClick={() => {
+                setModeChosen(false);
+                setRoomMode("local");
+                setRoomId(null);
+                setRoomInput(lastSharedRoom || "");
+                onClose();
+              }}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded text-sm font-medium flex items-center justify-center gap-2"
+            >
+              <Home size={16} />
+              モード選択へ
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -488,6 +945,10 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDele
 const LAST_SHARED_ROOM_KEY = 'tactical_last_shared_room';
 
 export default function App() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const { width: windowWidth, height: windowHeight } = useWindowSize();
+  
   const [user, setUser] = useState(null);
   const lastSharedRoom = (() => {
     try {
@@ -531,21 +992,33 @@ export default function App() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showShareToast, setShowShareToast] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [roomMode, setRoomMode] = useState('local'); // local or shared
+  const [roomMode, setRoomMode] = useState('local');
   const [roomInput, setRoomInput] = useState(lastSharedRoom || '');
   const [modeChosen, setModeChosen] = useState(false);
   const [showSharedSetup, setShowSharedSetup] = useState(false);
   const [roomCreator, setRoomCreator] = useState(false);
-  const [activeProfile, setActiveProfile] = useState('default'); // マップ攻略プロファイルID
+  const [activeProfile, setActiveProfile] = useState('default');
   const [newProfileName, setNewProfileName] = useState('');
   const [renameProfileName, setRenameProfileName] = useState('');
   const [localMapMeta, setLocalMapMeta] = useState({});
   const [sharedMapMeta, setSharedMapMeta] = useState({});
-  const [roomInfo, setRoomInfo] = useState(null); // { ownerUid, allowedUsers, pending }
+  const [roomInfo, setRoomInfo] = useState(null);
   const [roomInfoLoading, setRoomInfoLoading] = useState(false);
+  
+  // Mobile-specific states
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Touch handling states
+  const [touchState, setTouchState] = useState({
+    touches: [],
+    lastDistance: null,
+    lastCenter: null,
+  });
+
   const roomDocRef = useMemo(
     () => (db && roomId ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId) : null),
-    [db, roomId],
+    [roomId],
   );
   const [modeError, setModeError] = useState('');
   const pendingEntries = roomInfo?.pending || [];
@@ -564,12 +1037,9 @@ export default function App() {
   const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
   const allowedUsers = roomInfo?.allowedUsers || [];
   const isApproved = useMemo(() => {
-    // ローカルは常にOK
     if (activeMode !== 'shared') return true;
-    // 共有だがまだ情報がない場合は、オーナー生成待ち
     if (!roomId) return false;
-    if (!roomInfo) return roomCreator; // 生成中なら暫定許可、そうでなければブロック
-    // ユーザー未確定でもブロックしない（匿名認証待ちの間も動けるように）
+    if (!roomInfo) return roomCreator;
     if (!user) return true;
     if (roomInfo.ownerUid === user.uid) return true;
     return allowedUsers.includes(user.uid);
@@ -806,7 +1276,7 @@ export default function App() {
       },
     );
     return () => unsub();
-  }, [roomId, useFirebase, db, roomDocRef]);
+  }, [roomId, useFirebase, roomDocRef]);
 
   // Ensure room doc exists & owner is allowed
   useEffect(() => {
@@ -814,7 +1284,7 @@ export default function App() {
       if (!useFirebase || !roomId || !db || !user) return;
       try {
         if (!roomInfo) {
-          if (!roomCreator) return; // 生成者でないなら作らない
+          if (!roomCreator) return;
           await setDoc(roomDocRef, {
             ownerUid: user.uid,
             allowedUsers: [user.uid],
@@ -823,7 +1293,6 @@ export default function App() {
           });
           return;
         }
-        // If owner is set, ensure owner is in allowedUsers
         if (roomInfo.ownerUid === user.uid) {
           if (!roomInfo.allowedUsers?.includes(user.uid)) {
             await updateDoc(roomDocRef, { allowedUsers: arrayUnion(user.uid) });
@@ -834,13 +1303,13 @@ export default function App() {
       }
     };
     ensureRoom();
-  }, [roomId, db, user, roomInfo, useFirebase]);
+  }, [roomId, user, roomInfo, useFirebase, roomDocRef, roomCreator]);
 
   // If visitor is not approved, add to pending
   useEffect(() => {
     const sendPending = async () => {
       if (!useFirebase || !roomId || !db || !user) return;
-      if (!roomInfo) return; // wait until loaded
+      if (!roomInfo) return;
       if (roomInfo.ownerUid === user.uid) return;
       const alreadyAllowed = roomInfo.allowedUsers?.includes(user.uid);
       const pendingArr = roomInfo.pending || [];
@@ -859,14 +1328,25 @@ export default function App() {
       }
     };
     sendPending();
-  }, [roomId, db, user, roomInfo, useFirebase, displayName]);
+  }, [roomId, user, roomInfo, useFirebase, displayName, roomDocRef]);
+
+  const centerMap = useCallback(() => {
+    const containerW = windowWidth;
+    const containerH = windowHeight;
+    const config = MAP_CONFIG[currentMap];
+    const initialScale = isMobile ? 0.25 : 0.4;
+    setTransform({
+      x: containerW / 2 - (config.width * initialScale) / 2,
+      y: containerH / 2 - (config.height * initialScale) / 2,
+      scale: initialScale,
+    });
+  }, [windowWidth, windowHeight, currentMap, isMobile]);
 
   useEffect(() => {
     const config = MAP_CONFIG[currentMap];
     if (config.layers && config.layers.length > 0) setCurrentLayer(config.layers[0].id);
     else setCurrentLayer(null);
     centerMap();
-    // update URL map param
     const params = new URLSearchParams(window.location.search);
     params.set('map', currentMap);
     params.set('profile', activeProfile);
@@ -874,7 +1354,7 @@ export default function App() {
     else params.delete('room');
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [currentMap, activeProfile, roomId]);
+  }, [currentMap, activeProfile, roomId, centerMap]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -883,7 +1363,7 @@ export default function App() {
     if (roomId) params.set('room', roomId);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [activeProfile]);
+  }, [activeProfile, currentMap, roomId]);
 
   // Persist local pins
   useEffect(() => {
@@ -902,13 +1382,13 @@ export default function App() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const loadedPins = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const loadedPins = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setSharedPins(loadedPins);
       },
       (error) => console.error(error),
     );
     return () => unsubscribe();
-  }, [user, roomId]);
+  }, [user, roomId, canSync, activeMode]);
 
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
@@ -985,6 +1465,7 @@ export default function App() {
     }
     setIsResettingIcon(false);
   };
+  
   const startAddCustomMarker = (catKey) => {
     setNewMarkerCat(catKey);
     setNewMarkerName('');
@@ -1022,39 +1503,97 @@ export default function App() {
     setShowMarkerDialog(false);
   };
 
+  const setZoom = useCallback((newScale, focal) => {
+    const s = Math.min(Math.max(0.15, newScale), 5);
+    const focalX = focal?.x ?? windowWidth / 2;
+    const focalY = focal?.y ?? windowHeight / 2;
 
-  const setZoom = (newScale, focal) => {
-    const s = Math.min(Math.max(0.2, newScale), 5);
-    const focalX = focal?.x ?? window.innerWidth / 2;
-    const focalY = focal?.y ?? window.innerHeight / 2;
+    setTransform((prev) => {
+      const mapCenterX = (focalX - prev.x) / prev.scale;
+      const mapCenterY = (focalY - prev.y) / prev.scale;
+      const newX = focalX - mapCenterX * s;
+      const newY = focalY - mapCenterY * s;
+      return { x: newX, y: newY, scale: s };
+    });
+  }, [windowWidth, windowHeight]);
 
-    // Zoom keeping the focal point (mouse position or center) stable
-    const mapCenterX = (focalX - transform.x) / transform.scale;
-    const mapCenterY = (focalY - transform.y) / transform.scale;
-
-    const newX = focalX - mapCenterX * s;
-    const newY = focalY - mapCenterY * s;
-
-    setTransform({ x: newX, y: newY, scale: s });
-  };
-
-  const handleWheel = (e) => {
+  const handleWheel = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-    }
     const scaleSensitivity = 0.001;
     const newScale = transform.scale - e.deltaY * scaleSensitivity;
     setZoom(newScale, { x: e.clientX, y: e.clientY });
-  };
+  }, [transform.scale, setZoom]);
 
   useEffect(() => {
     const el = mapWrapperRef.current;
     if (!el) return;
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  });
+  }, [handleWheel]);
+
+  // Touch handlers for mobile
+  const handleTouchStart = useCallback((e) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setIsDragging(true);
+      setDragStart({ x: touch.clientX - transform.x, y: touch.clientY - transform.y });
+      setTouchState({ touches: [touch], lastDistance: null, lastCenter: null });
+    } else if (e.touches.length === 2) {
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+      const center = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      };
+      setTouchState({ touches: [touch1, touch2], lastDistance: distance, lastCenter: center });
+      setIsDragging(false);
+    }
+  }, [transform.x, transform.y]);
+
+  const handleTouchMove = useCallback((e) => {
+    if (e.touches.length === 1 && isDragging) {
+      const touch = e.touches[0];
+      setTransform((prev) => ({
+        ...prev,
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y,
+      }));
+    } else if (e.touches.length === 2) {
+      e.preventDefault();
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+      const center = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      };
+
+      if (touchState.lastDistance !== null) {
+        const scaleDelta = distance / touchState.lastDistance;
+        const newScale = transform.scale * scaleDelta;
+        setZoom(newScale, center);
+      }
+
+      if (touchState.lastCenter !== null) {
+        const deltaX = center.x - touchState.lastCenter.x;
+        const deltaY = center.y - touchState.lastCenter.y;
+        setTransform((prev) => ({
+          ...prev,
+          x: prev.x + deltaX,
+          y: prev.y + deltaY,
+        }));
+      }
+
+      setTouchState({ touches: [touch1, touch2], lastDistance: distance, lastCenter: center });
+    }
+  }, [isDragging, dragStart, touchState, transform.scale, setZoom]);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false);
+    setTouchState({ touches: [], lastDistance: null, lastCenter: null });
+  }, []);
 
   const handleMouseDown = (e) => {
     if (e.button === 1 || selectedTool === 'move') {
@@ -1072,11 +1611,9 @@ export default function App() {
   const handleMouseUp = () => setIsDragging(false);
 
   const handleMapClick = async (e) => {
-    // ピン要素がクリックされた場合はスキップ
     if (e.target.closest('.pin-element')) return;
-
     if (isDragging) return;
-    // 共有モードでユーザー/Room未接続ならサインインを試みて中断
+    
     if (activeMode === 'shared' && (!user || !roomId)) {
       if (useFirebase && auth) {
         try {
@@ -1085,7 +1622,7 @@ export default function App() {
           console.error('Auth retry failed', err);
         }
       }
-      alert('共有モードでピンを置くにはRoom接続とサインインが必要です。数秒後に再度お試しください。');
+      alert('共有モードでピンを置くにはRoom接続とサインインが必要です。');
       return;
     }
 
@@ -1191,17 +1728,6 @@ export default function App() {
     }
   };
 
-  const centerMap = () => {
-    const containerW = window.innerWidth;
-    const containerH = window.innerHeight;
-    const config = MAP_CONFIG[currentMap];
-    setTransform({
-      x: containerW / 2 - (config.width * 0.4) / 2,
-      y: containerH / 2 - (config.height * 0.4) / 2,
-      scale: 0.4,
-    });
-  };
-
   const visiblePins = pins.filter((p) => {
     if (p.mapId !== currentMap) return false;
     const pinProfile = p.profileId || 'default';
@@ -1252,12 +1778,35 @@ export default function App() {
     if (!profiles.includes(activeProfile)) {
       setActiveProfile(profiles[0] || 'default');
     }
-  }, [currentMap, profiles]);
+  }, [currentMap, profiles, activeProfile]);
+
+  const updateMapMeta = async (mapId, partial) => {
+    const prev = mapMeta[mapId] || {};
+    const next = { ...prev, ...partial, updatedAt: Date.now(), updatedBy: user?.uid || 'local', updatedByName: displayName || 'ローカル' };
+    if (activeMode === 'shared') {
+      if (!canSync || !roomId || !user || !db) return;
+      const collectionName = `${roomId}_mapmeta`;
+      try {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next).catch(async (err) => {
+          if (err.code === 'not-found' || String(err).includes('No document')) {
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next);
+          } else {
+            throw err;
+          }
+        });
+        setSharedMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
+      } catch (err) {
+        console.error('Map meta update failed', err);
+      }
+    } else {
+      setLocalMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
+    }
+  };
+
   const addProfile = (name) => {
     const trimmed = (name || '').trim();
     if (!trimmed) return;
     const list = Array.from(new Set([...profiles, trimmed]));
-    // 即時にメタへ反映
     setMapMetaForMode(currentMap, (prev) => {
       const meta = prev[currentMap] || {};
       return { ...prev, [currentMap]: { ...meta, profiles: list } };
@@ -1303,6 +1852,69 @@ export default function App() {
     setActiveProfile(trimmed);
   };
 
+  const copyProfile = async () => {
+    const base = activeProfile || 'default';
+    let suffix = 1;
+    let candidate = `${base}_copy`;
+    while (profiles.includes(candidate)) {
+      suffix += 1;
+      candidate = `${base}_copy${suffix}`;
+    }
+    const sourcePins = (activeMode === 'shared' ? sharedPins : localPins).filter(
+      (p) => (p.profileId || 'default') === base && p.mapId === currentMap,
+    );
+    addProfile(candidate);
+    if (activeMode === 'local') {
+      const copied = sourcePins.map((p) => ({
+        ...p,
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        profileId: candidate,
+        createdAt: new Date(),
+      }));
+      setLocalPins((prev) => [...prev, ...copied]);
+    } else {
+      sourcePins.forEach((p) => {
+        addDoc(collection(db, 'artifacts', appId, 'public', 'data', `${roomId}_pins`), {
+          ...p,
+          id: undefined,
+          createdAt: serverTimestamp(),
+          profileId: candidate,
+          note: p.note || '',
+        });
+      });
+    }
+    setActiveProfile(candidate);
+  };
+
+  const deleteCurrentProfile = async () => {
+    if (profiles.length <= 1) return;
+    const target = activeProfile;
+    const nextList = profiles.filter((p) => p !== target);
+    setMapMetaForMode(currentMap, (prev) => {
+      const meta = prev[currentMap] || {};
+      return { ...prev, [currentMap]: { ...meta, profiles: nextList } };
+    });
+    updateMapMeta(currentMap, { profiles: nextList });
+    setActiveProfile(nextList[0] || 'default');
+    if (activeMode === 'local') {
+      setLocalPins((prev) =>
+        prev.filter(
+          (p) => !(p.mapId === currentMap && (p.profileId || 'default') === target),
+        ),
+      );
+    } else {
+      const toDelete = sharedPins.filter(
+        (p) => p.mapId === currentMap && (p.profileId || 'default') === target,
+      );
+      const collectionName = `${roomId}_pins`;
+      await Promise.allSettled(
+        toDelete.map((p) =>
+          deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, p.id)),
+        ),
+      );
+    }
+  };
+
   const config = MAP_CONFIG[currentMap];
   let defaultUrl = config.defaultUrl;
   let imageKey = currentMap;
@@ -1341,30 +1953,6 @@ export default function App() {
     window.history.replaceState({}, '', newUrl);
   };
 
-  // Map metadata handling
-  const updateMapMeta = async (mapId, partial) => {
-    const prev = mapMeta[mapId] || {};
-    const next = { ...prev, ...partial, updatedAt: Date.now(), updatedBy: user?.uid || 'local', updatedByName: displayName || 'ローカル' };
-    if (activeMode === 'shared') {
-      if (!canSync || !roomId || !user || !db) return;
-      const collectionName = `${roomId}_mapmeta`;
-      try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next).catch(async (err) => {
-          if (err.code === 'not-found' || String(err).includes('No document')) {
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next);
-          } else {
-            throw err;
-          }
-        });
-        setSharedMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
-      } catch (err) {
-        console.error('Map meta update failed', err);
-      }
-    } else {
-      setLocalMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
-    }
-  };
-
   const copyRoomLink = () => {
     const activeRoomId = roomId || generateRoomId();
     if (!roomId) {
@@ -1388,26 +1976,13 @@ export default function App() {
       }
 
       const wrapper = mapWrapperRef.current;
-      const rect = wrapper.getBoundingClientRect();
-
-      // 可視領域のサイズを取得
-      const width = Math.ceil(rect.width);
-      const height = Math.ceil(rect.height);
-
-      if (width === 0 || height === 0) {
-        alert('マップが見つかりません');
-        return;
-      }
-
-      // マップコンテナをCanvasに変換
       const canvas = await html2canvas(wrapper, {
-        scale: 2, // 高解像度でキャプチャ
+        scale: 2,
         allowTaint: true,
         useCORS: true,
         logging: false,
       });
 
-      // 黒い領域を自動的に検出してトリミング
       const ctx = canvas.getContext('2d');
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
@@ -1415,17 +1990,14 @@ export default function App() {
       let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
       let foundNonBlack = false;
 
-      // 非黒色ピクセルの範囲を検出
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
-        // 黒色以外（ある程度の輝度）のピクセルを検出
         if (r > 20 || g > 20 || b > 20) {
           const pixelIndex = i / 4;
           const x = pixelIndex % canvas.width;
           const y = Math.floor(pixelIndex / canvas.width);
-
           minX = Math.min(minX, x);
           maxX = Math.max(maxX, x);
           minY = Math.min(minY, y);
@@ -1434,53 +2006,33 @@ export default function App() {
         }
       }
 
-      // トリミング領域を計算（パディング追加）
       const padding = 20;
       const cropX = Math.max(0, minX - padding);
       const cropY = Math.max(0, minY - padding);
       const cropWidth = Math.min(canvas.width - cropX, maxX - minX + padding * 2);
       const cropHeight = Math.min(canvas.height - cropY, maxY - minY + padding * 2);
 
-      // トリミング後のCanvasを作成
       const croppedCanvas = document.createElement('canvas');
       croppedCanvas.width = cropWidth;
       croppedCanvas.height = cropHeight;
 
       const croppedCtx = croppedCanvas.getContext('2d');
       if (foundNonBlack && cropWidth > 0 && cropHeight > 0) {
-        croppedCtx.drawImage(
-          canvas,
-          cropX,
-          cropY,
-          cropWidth,
-          cropHeight,
-          0,
-          0,
-          cropWidth,
-          cropHeight
-        );
+        croppedCtx.drawImage(canvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
       } else {
-        // 非黒色が見つからない場合は元のキャンバスを使用
         croppedCtx.drawImage(canvas, 0, 0);
       }
 
-      // CanvasをBlobに変換
       croppedCanvas.toBlob((blob) => {
-        // ダウンロードリンクを作成
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-
-        // ファイル名を生成（マップ名 + タイムスタンプ）
         const mapName = MAP_CONFIG[currentMap]?.name || 'map';
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
         link.download = `${mapName}_${timestamp}.png`;
-
         link.href = url;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-
-        // メモリ解放
         URL.revokeObjectURL(url);
       }, 'image/png');
     } catch (error) {
@@ -1553,13 +2105,14 @@ export default function App() {
     setRoomMode('local');
   };
 
-  return (
-    !modeChosen ? (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 via-gray-100 to-gray-200 text-gray-900 flex items-center justify-center p-6 relative">
-        <div className="max-w-5xl w-full space-y-8 text-center">
+  // Mode Selection Screen
+  if (!modeChosen) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 via-gray-100 to-gray-200 text-gray-900 flex items-center justify-center p-4 sm:p-6 relative">
+        <div className="max-w-5xl w-full space-y-6 sm:space-y-8 text-center">
           <div>
-            <div className="text-3xl font-extrabold text-gray-800 mb-2">モード選択</div>
-            <div className="text-sm text-gray-500">アプリケーションの実行環境を選択してください</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-gray-800 mb-2">モード選択</div>
+            <div className="text-xs sm:text-sm text-gray-500">アプリケーションの実行環境を選択してください</div>
           </div>
           <div className="max-w-md mx-auto space-y-2 text-left">
             <label className="text-xs text-gray-600">記載者名</label>
@@ -1567,20 +2120,20 @@ export default function App() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
               placeholder="名前を入力"
-              className={`w-full bg-white border ${modeError ? 'border-red-500' : 'border-gray-400'} rounded px-3 py-2 text-sm text-gray-900`}
+              className={`w-full bg-white border ${modeError ? 'border-red-500' : 'border-gray-400'} rounded px-3 py-2.5 text-sm text-gray-900`}
             />
             {modeError && <div className="text-xs text-red-500">{modeError}</div>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <button
               onClick={handleSelectLocal}
-              className="p-6 rounded-2xl bg-white border border-gray-400 hover:border-gray-700 transition shadow flex flex-col items-center gap-3"
+              className="p-5 sm:p-6 rounded-2xl bg-white border border-gray-400 hover:border-gray-700 transition shadow flex flex-col items-center gap-3"
             >
-              <div className="p-4 rounded-full bg-gray-200 text-gray-700">
-                <User size={32} />
+              <div className="p-3 sm:p-4 rounded-full bg-gray-200 text-gray-700">
+                <User size={isMobile ? 24 : 32} />
               </div>
-              <div className="text-xl font-bold">ローカル</div>
-              <div className="text-sm text-gray-500 leading-relaxed">
+              <div className="text-lg sm:text-xl font-bold">ローカル</div>
+              <div className="text-xs sm:text-sm text-gray-500 leading-relaxed">
                 自分の端末内だけで完結します。通信を行わず、個人的に使用する場合に最適です。
               </div>
               <div className="text-xs text-gray-500 flex items-center gap-2 mt-2">
@@ -1589,13 +2142,13 @@ export default function App() {
             </button>
             <button
               onClick={handleOpenSharedSetup}
-              className="p-6 rounded-2xl bg-white border border-gray-400 hover:border-gray-700 transition shadow flex flex-col items-center gap-3"
+              className="p-5 sm:p-6 rounded-2xl bg-white border border-gray-400 hover:border-gray-700 transition shadow flex flex-col items-center gap-3"
             >
-              <div className="p-4 rounded-full bg-gray-200 text-gray-700">
-                <Users size={32} />
+              <div className="p-3 sm:p-4 rounded-full bg-gray-200 text-gray-700">
+                <Users size={isMobile ? 24 : 32} />
               </div>
-              <div className="text-xl font-bold">共有（オンライン）</div>
-              <div className="text-sm text-gray-500 leading-relaxed">
+              <div className="text-lg sm:text-xl font-bold">共有（オンライン）</div>
+              <div className="text-xs sm:text-sm text-gray-500 leading-relaxed">
                 データをクラウドで同期します。チームや友人と情報を共有する場合に最適です。
               </div>
               <div className="text-xs text-gray-500 flex items-center gap-2 mt-2">
@@ -1606,23 +2159,23 @@ export default function App() {
         </div>
         {showSharedSetup && (
           <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-white border border-gray-300 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-3 text-gray-900">
-              <div className="text-lg font-bold flex items-center gap-2">
+            <div className="bg-white border border-gray-300 rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-5 space-y-3 text-gray-900">
+              <div className="text-base sm:text-lg font-bold flex items-center gap-2">
                 <Users size={18} /> 共有ルームに参加 / 発行
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="text-xs sm:text-sm text-gray-600">
                 ルームIDを入力するか、発行ボタンで新しいIDを生成してください。
               </div>
               <input
                 value={roomInput}
                 onChange={(e) => setRoomInput(e.target.value)}
-                className="w-full bg-white border border-gray-400 rounded px-3 py-2 text-sm"
+                className="w-full bg-white border border-gray-400 rounded px-3 py-2.5 text-sm"
                 placeholder="ルームIDを入力"
               />
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => setRoomInput(generateRoomId())}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-sm text-white py-2 rounded"
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-sm text-white py-2.5 rounded"
                 >
                   ルームID発行
                 </button>
@@ -1630,13 +2183,13 @@ export default function App() {
                   onClick={() => {
                     if (lastSharedRoom) setRoomInput(lastSharedRoom);
                   }}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-sm text-gray-900 py-2 rounded disabled:opacity-40"
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-sm text-gray-900 py-2.5 rounded disabled:opacity-40"
                   disabled={!lastSharedRoom}
                 >
                   前回のIDを使う
                 </button>
               </div>
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end pt-2">
                 <button
                   onClick={handleCancelShared}
                   className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
@@ -1654,17 +2207,22 @@ export default function App() {
           </div>
         )}
       </div>
-    ) : (
-    <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative">
+    );
+  }
+
+  // Main App UI
+  return (
+    <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative touch-none">
       {actionMessage && (
-        <div className="absolute top-2 left-2 z-50 bg-blue-900/80 text-xs px-3 py-2 rounded shadow">
+        <div className="absolute top-14 left-2 z-50 bg-blue-900/80 text-xs px-3 py-2 rounded shadow">
           {actionMessage}
         </div>
       )}
+      
       {isOwner && normalizedPending.length > 0 && (
-        <div className="absolute top-2 right-2 z-50 bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3 w-72">
+        <div className={`absolute z-50 bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3 ${isMobile ? 'top-14 left-2 right-2' : 'top-14 right-2 w-72'}`}>
           <div className="text-sm font-bold mb-2">承認待ち ({normalizedPending.length})</div>
-          <div className="space-y-2 max-h-60 overflow-auto">
+          <div className="space-y-2 max-h-40 sm:max-h-60 overflow-auto">
             {normalizedPending.map((p) => (
               <div key={p.uid} className="flex items-center justify-between bg-slate-900/80 px-2 py-1 rounded">
                 <div className="text-xs">
@@ -1690,10 +2248,11 @@ export default function App() {
           </div>
         </div>
       )}
+      
       {activeMode === 'shared' && !isOwner && !isApproved && (
         <div className="absolute inset-0 z-40 bg-black/70 flex flex-col items-center justify-center text-center px-6">
-          <div className="text-xl font-bold mb-2">オーナーの承認が必要です</div>
-          <div className="text-sm text-gray-300 mb-4">
+          <div className="text-lg sm:text-xl font-bold mb-2">オーナーの承認が必要です</div>
+          <div className="text-xs sm:text-sm text-gray-300 mb-4">
             {approvalMessage || '承認されるまで操作できません。しばらくお待ちください。'}
           </div>
           <button
@@ -1704,31 +2263,33 @@ export default function App() {
           </button>
         </div>
       )}
+      
       {!useFirebase && (
-        <div className="absolute top-2 right-2 z-50 bg-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow">
-          Firebase disabled (local demo mode)
+        <div className="absolute top-14 right-2 z-50 bg-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow">
+          Firebase disabled
         </div>
       )}
+      
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
-      <input
-        type="file"
-        ref={iconFileInputRef}
-        className="hidden"
-        accept="image/*"
-        onChange={handleIconFileSelect}
-      />
-      <input
-        type="file"
-        ref={newMarkerIconInputRef}
-        className="hidden"
-        accept="image/*"
-        onChange={handleNewMarkerUpload}
-      />
+      <input type="file" ref={iconFileInputRef} className="hidden" accept="image/*" onChange={handleIconFileSelect} />
+      <input type="file" ref={newMarkerIconInputRef} className="hidden" accept="image/*" onChange={handleNewMarkerUpload} />
 
-      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 z-30 shadow-lg shrink-0 gap-4">
-        <div className="flex items-center gap-3 min-w-fit">
-          <ShieldAlert className="text-orange-500 w-5 h-5" />
-          <h1 className="font-bold text-base tracking-wider text-gray-100">TACTICAL</h1>
+      {/* Header */}
+      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-2 sm:px-4 z-30 shadow-lg shrink-0">
+        {/* Left Section */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 text-gray-400 hover:text-white md:hidden"
+          >
+            <Menu size={20} />
+          </button>
+          
+          <ShieldAlert className="text-orange-500 w-4 h-4 sm:w-5 sm:h-5 hidden sm:block" />
+          <h1 className="font-bold text-sm sm:text-base tracking-wider text-gray-100 hidden sm:block">TACTICAL</h1>
+          
+          {/* Desktop: Mode Selection Button */}
           <button
             onClick={() => {
               setModeChosen(false);
@@ -1736,13 +2297,15 @@ export default function App() {
               setRoomId(null);
               setRoomInput(lastSharedRoom || "");
             }}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-bold transition-all shadow-md"
+            className="hidden xl:flex bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-xs font-bold transition-all shadow-md items-center gap-1"
           >
-            モード選択へ
+            <Home size={12} />
+            モード選択
           </button>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+        {/* Center Section - Map/Profile Selectors (Desktop) */}
+        <div className="hidden lg:flex items-center gap-2 flex-1 justify-center max-w-4xl mx-4">
           <select
             value={currentMap}
             onChange={(e) => setCurrentMap(e.target.value)}
@@ -1754,6 +2317,7 @@ export default function App() {
               </option>
             ))}
           </select>
+          
           <select
             value={activeProfile}
             onChange={(e) => setActiveProfile(e.target.value)}
@@ -1765,110 +2329,54 @@ export default function App() {
               </option>
             ))}
           </select>
+
           <input
             value={newProfileName}
             onChange={(e) => setNewProfileName(e.target.value)}
-            placeholder="新規プロファイル名"
-            className="w-32 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+            placeholder="新規プロファイル"
+            className="w-28 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
           />
           <button
             onClick={() => {
               addProfile(newProfileName || `攻略${profiles.length + 1}`);
               setNewProfileName('');
             }}
-            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700"
           >
             追加
           </button>
+
           <input
             value={renameProfileName}
             onChange={(e) => setRenameProfileName(e.target.value)}
-            placeholder="プロファイル名を変更"
-            className="w-32 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
+            placeholder="リネーム"
+            className="w-24 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1"
           />
           <button
             onClick={() => {
               renameProfile(renameProfileName);
               setRenameProfileName('');
             }}
-            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700"
           >
             リネーム
           </button>
           <button
-            onClick={() => {
-              const base = activeProfile || 'default';
-              let suffix = 1;
-              let candidate = `${base}_copy`;
-              while (profiles.includes(candidate)) {
-                suffix += 1;
-                candidate = `${base}_copy${suffix}`;
-              }
-              const sourcePins = (activeMode === 'shared' ? sharedPins : localPins).filter(
-                (p) => (p.profileId || 'default') === base && p.mapId === currentMap,
-              );
-              addProfile(candidate);
-              if (activeMode === 'local') {
-                const copied = sourcePins.map((p) => ({
-                  ...p,
-                  id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                  profileId: candidate,
-                  createdAt: new Date(),
-                }));
-                setLocalPins((prev) => [...prev, ...copied]);
-              } else {
-                sourcePins.forEach((p) => {
-                  addDoc(collection(db, 'artifacts', appId, 'public', 'data', `${roomId}_pins`), {
-                    ...p,
-                    id: undefined,
-                    createdAt: serverTimestamp(),
-                    profileId: candidate,
-                    note: p.note || '',
-                  });
-                });
-              }
-              setActiveProfile(candidate);
-            }}
-            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+            onClick={copyProfile}
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700"
           >
             コピー
           </button>
           <button
-            onClick={async () => {
-              if (profiles.length <= 1) return;
-              const target = activeProfile;
-              const nextList = profiles.filter((p) => p !== target);
-              setMapMetaForMode(currentMap, (prev) => {
-                const meta = prev[currentMap] || {};
-                return { ...prev, [currentMap]: { ...meta, profiles: nextList } };
-              });
-              updateMapMeta(currentMap, { profiles: nextList });
-              setActiveProfile(nextList[0] || 'default');
-              if (activeMode === 'local') {
-                setLocalPins((prev) =>
-                  prev.filter(
-                    (p) => !(p.mapId === currentMap && (p.profileId || 'default') === target),
-                  ),
-                );
-              } else {
-                const toDelete = sharedPins.filter(
-                  (p) => p.mapId === currentMap && (p.profileId || 'default') === target,
-                );
-                const collectionName = `${roomId}_pins`;
-                await Promise.allSettled(
-                  toDelete.map((p) =>
-                    deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, p.id)),
-                  ),
-                );
-              }
-            }}
-            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700 whitespace-nowrap"
+            onClick={deleteCurrentProfile}
+            className="px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-200 hover:bg-gray-700"
           >
             削除
           </button>
+          
           <button
-            onClick={() => setSelectedTool('custom_pin')}
-            className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded border transition-all whitespace-nowrap ${
+            onClick={() => setSelectedTool(selectedTool === 'custom_pin' ? 'move' : 'custom_pin')}
+            className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded border transition-all ${
               selectedTool === 'custom_pin'
                 ? 'bg-orange-600 text-white border-orange-400'
                 : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
@@ -1879,53 +2387,104 @@ export default function App() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3 min-w-fit">
-          <div className="flex items-center gap-2 bg-gray-800 rounded px-2 py-1 border border-gray-700">
-            <span className="text-xs text-gray-400">名前</span>
-            <input
-              type="text"
-              value={displayName}
+        {/* Mobile/Tablet Center Controls */}
+        <div className="flex lg:hidden items-center gap-1 flex-1 justify-center mx-2">
+          <select
+            value={currentMap}
+            onChange={(e) => setCurrentMap(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1.5 max-w-[90px]"
+          >
+            {Object.values(MAP_CONFIG).map((map) => (
+              <option key={map.id} value={map.id}>
+                {map.name}
+              </option>
+            ))}
+          </select>
+          
+          <select
+            value={activeProfile}
+            onChange={(e) => setActiveProfile(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1.5 max-w-[70px]"
+          >
+            {profiles.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
 
-              onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
-              placeholder="記載者名"
-              className="bg-transparent text-sm text-white outline-none w-28"
-            />
-          </div>
           <button
-            onClick={copyRoomLink}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-xs font-medium transition-all"
+            onClick={() => setSelectedTool(selectedTool === 'custom_pin' ? 'move' : 'custom_pin')}
+            className={`flex items-center gap-1 px-2 py-1.5 text-xs font-bold rounded border transition-all ${
+              selectedTool === 'custom_pin'
+                ? 'bg-orange-600 text-white border-orange-400'
+                : 'bg-gray-800 text-gray-300 border-gray-700'
+            }`}
           >
-            共有
+            <MapPin size={14} />
           </button>
+        </div>
+
+        {/* Right Section */}
+        <div className="flex items-center gap-2">
+          {/* Desktop Controls */}
+          <div className="hidden md:flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-gray-800 rounded px-2 py-1 border border-gray-700">
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
+                placeholder="記載者名"
+                className="bg-transparent text-sm text-white outline-none w-24"
+              />
+            </div>
+            <button
+              onClick={copyRoomLink}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1"
+            >
+              <Share2 size={14} />
+              共有
+            </button>
+            <button
+              onClick={takeScreenshot}
+              className="bg-green-600 hover:bg-green-500 text-white px-2 py-1.5 rounded text-xs font-medium flex items-center gap-1"
+            >
+              <Download size={14} />
+            </button>
+          </div>
+
+          {/* Mobile Menu Button */}
           <button
-            onClick={takeScreenshot}
-            className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1"
-            title="スクリーンショット"
+            onClick={() => setMobileMenuOpen(true)}
+            className="p-2 text-gray-400 hover:text-white md:hidden"
           >
-            <Download size={14} />
+            <MoreVertical size={20} />
           </button>
         </div>
       </header>
 
+      {/* Layer Selector */}
       {config.layers && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex gap-2 bg-black/80 backdrop-blur p-1 rounded-lg border border-gray-700">
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex gap-1 sm:gap-2 bg-black/80 backdrop-blur p-1 rounded-lg border border-gray-700">
           {config.layers.map((layer) => (
             <button
               key={layer.id}
               onClick={() => setCurrentLayer(layer.id)}
-              className={`flex items-center gap-2 px-3 py-1 text-xs font-bold rounded transition-all ${
+              className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 text-xs font-bold rounded transition-all ${
                 currentLayer === layer.id ? 'bg-orange-500 text-white' : 'text-gray-400 hover:bg-gray-700'
               }`}
             >
-              <Layers size={14} />
-              {layer.name}
+              <Layers size={12} />
+              <span className="hidden sm:inline">{layer.name}</span>
+              <span className="sm:hidden">{layer.id === 'upper' ? '地上' : '地下'}</span>
             </button>
           ))}
         </div>
       )}
 
       <div className="flex-1 relative flex overflow-hidden">
-        <div className="w-64 bg-gray-900/95 backdrop-blur border-r border-gray-800 flex flex-col z-20 shadow-xl shrink-0 overflow-hidden">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:flex w-64 bg-gray-900/95 backdrop-blur border-r border-gray-800 flex-col z-20 shadow-xl shrink-0 overflow-hidden">
           <div className="p-3 border-b border-gray-800 space-y-3">
             <div className="relative">
               <Search className="absolute left-2 top-1.5 text-gray-500 w-4 h-4" />
@@ -1937,35 +2496,36 @@ export default function App() {
                 className="w-full bg-black/40 border border-gray-700 rounded pl-8 pr-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-orange-500"
               />
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2">
-                <div className="w-24 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 flex items-center justify-center font-bold">
-                  {roomMode === "local" ? "ローカル" : "共有"}
-                </div>
-                <input
-                  value={roomInput}
-                  onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
-                  placeholder="ROOM ID"
-                  disabled={roomMode === "local" || (roomMode === "shared" && modeChosen)}
-                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 disabled:opacity-50"
-                />
-                <button
-                  onClick={() => {
-                    if (roomMode === "local") {
-                      applyRoomId(null);
-                      setModeChosen(true);
-                      return;
-                    }
-                    setShowSharedSetup(true);
-                  }}
-                  className="px-3 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50 whitespace-nowrap"
-                  disabled={roomMode === "local"}
-                >
-                  接続/発行
-                </button>
+            
+            {/* Room ID Section */}
+            <div className="flex items-center gap-2">
+              <div className="w-20 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 flex items-center justify-center font-bold">
+                {roomMode === "local" ? "ローカル" : "共有"}
               </div>
+              <input
+                value={roomInput}
+                onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
+                placeholder="ROOM ID"
+                disabled={roomMode === "local" || (roomMode === "shared" && modeChosen)}
+                className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 disabled:opacity-50"
+              />
+              <button
+                onClick={() => {
+                  if (roomMode === "local") {
+                    applyRoomId(null);
+                    setModeChosen(true);
+                    return;
+                  }
+                  setShowSharedSetup(true);
+                }}
+                className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+                disabled={roomMode === "local"}
+              >
+                接続
+              </button>
             </div>
-            <div className="flex gap-2 mt-2">
+            
+            <div className="flex gap-2">
               <button
                 onClick={() => setSelectedTool('move')}
                 className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
@@ -2014,7 +2574,6 @@ export default function App() {
                   <button
                     onClick={() => startAddCustomMarker(catKey)}
                     className="p-1 rounded hover:bg-gray-700 text-gray-300 hover:text-white"
-                    title="このカテゴリにピンを追加"
                   >
                     <Plus size={14} />
                   </button>
@@ -2042,33 +2601,29 @@ export default function App() {
                                 setSelectedTool(marker.id);
                               }
                             }}
-                            className={`w-full flex items-center gap-3 px-2 py-1.5 rounded text-xs transition-all cursor-pointer ${
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-all cursor-pointer ${
                               isActive
                                 ? 'bg-gray-700 text-white ring-1 ring-inset ring-gray-500'
                                 : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                             }`}
                           >
                             {iconImage ? (
-                              <img
-                                src={iconImage}
-                                alt={`${marker.label} icon`}
-                                className="w-5 h-5 rounded-full object-cover border border-gray-600/60"
-                              />
+                              <img src={iconImage} alt="" className="w-5 h-5 rounded-full object-cover border border-gray-600/60" />
                             ) : (
                               <MarkerIcon size={16} color={category.color} />
                             )}
                             <span className="flex-1 text-left truncate">{marker.label}</span>
                             <span className="text-[11px] text-gray-400">{count}</span>
-                            <div className="flex items-center gap-1 ml-1">
+                            <div className="flex items-center gap-1">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   triggerIconUpload(marker.id);
                                 }}
                                 className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700"
-                                title="アイコン画像を変更"
+                                title="アイコン変更"
                               >
-                                <Camera size={12} />
+                                <Camera size={10} />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -2076,13 +2631,10 @@ export default function App() {
                                   setMarkerVisibility((prev) => ({ ...prev, [marker.id]: !visible }));
                                 }}
                                 className={`p-1 rounded border ${
-                                  visible
-                                    ? 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
-                                    : 'bg-gray-900 text-gray-500 border-gray-800 hover:text-gray-300'
+                                  visible ? 'bg-gray-800 text-gray-300 border-gray-700' : 'bg-gray-900 text-gray-500 border-gray-800'
                                 }`}
-                                title={visible ? '非表示にする' : '表示する'}
                               >
-                                <EyeOff size={12} />
+                                <EyeOff size={10} />
                               </button>
                             </div>
                           </div>
@@ -2098,13 +2650,71 @@ export default function App() {
           </div>
         </div>
 
+        {/* Mobile Sidebar */}
+        <MobileSidebar
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          openCategories={openCategories}
+          toggleCategory={toggleCategory}
+          mergedMarkers={mergedMarkers}
+          markerIcons={markerIcons}
+          markerCounts={markerCounts}
+          isMarkerVisible={isMarkerVisible}
+          selectedTool={selectedTool}
+          setSelectedTool={setSelectedTool}
+          setMarkerVisibility={setMarkerVisibility}
+          triggerIconUpload={triggerIconUpload}
+          showAllMarkers={showAllMarkers}
+          hideAllMarkers={hideAllMarkers}
+          startAddCustomMarker={startAddCustomMarker}
+          roomId={roomId}
+          roomMode={roomMode}
+          roomInput={roomInput}
+          setRoomInput={setRoomInput}
+          modeChosen={modeChosen}
+          applyRoomId={applyRoomId}
+          setShowSharedSetup={setShowSharedSetup}
+          triggerFileUpload={triggerFileUpload}
+        />
+
+        {/* Mobile Header Menu */}
+        <MobileHeaderMenu
+          isOpen={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+          currentMap={currentMap}
+          setCurrentMap={setCurrentMap}
+          activeProfile={activeProfile}
+          setActiveProfile={setActiveProfile}
+          profiles={profiles}
+          addProfile={addProfile}
+          renameProfile={renameProfile}
+          copyProfile={copyProfile}
+          deleteProfile={deleteCurrentProfile}
+          displayName={displayName}
+          setDisplayName={setDisplayName}
+          copyRoomLink={copyRoomLink}
+          takeScreenshot={takeScreenshot}
+          setModeChosen={setModeChosen}
+          roomId={roomId}
+          setRoomId={setRoomId}
+          setRoomMode={setRoomMode}
+          setRoomInput={setRoomInput}
+          lastSharedRoom={lastSharedRoom}
+        />
+
+        {/* Map Area */}
         <div
           ref={mapWrapperRef}
-          className="flex-1 relative overflow-hidden bg-black cursor-crosshair"
+          className={`flex-1 relative overflow-hidden bg-black ${selectedTool === 'move' ? 'cursor-grab' : 'cursor-crosshair'} ${isDragging ? 'cursor-grabbing' : ''}`}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
           <div
             ref={mapRef}
@@ -2129,19 +2739,18 @@ export default function App() {
               <TacticalGrid config={config} onUpload={triggerFileUpload} />
             )}
 
-          {visiblePins.map((pin) => {
-            const markerDef = mergedMarkers[pin.type] || FALLBACK_MARKER;
-            const category = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
-            const PinIcon = markerDef.icon;
-            const isSelected = pin.id === selectedPinId;
-            const isMarked = markedPinIds.includes(pin.id);
-            const iconImage = pin.iconUrl || markerIcons[pin.type];
+            {visiblePins.map((pin) => {
+              const markerDef = mergedMarkers[pin.type] || FALLBACK_MARKER;
+              const category = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
+              const PinIcon = markerDef.icon;
+              const isSelected = pin.id === selectedPinId;
+              const isMarked = markedPinIds.includes(pin.id);
+              const iconImage = pin.iconUrl || markerIcons[pin.type];
 
-            // Base scale logic with Icon Size Slider support
-            const baseScale = Math.max(0.3, iconBaseScale);
-            const scale = baseScale;
-            const opacity = selectedPinId && !isSelected ? 0.4 : 1;
-            const zIndex = isSelected ? 50 : 10;
+              const baseScale = Math.max(0.3, iconBaseScale);
+              const scale = baseScale;
+              const opacity = selectedPinId && !isSelected ? 0.4 : 1;
+              const zIndex = isSelected ? 50 : 10;
 
               return (
                 <div
@@ -2164,30 +2773,15 @@ export default function App() {
                     >
                       <div className="absolute inset-[-6px] rounded-full border-2 border-orange-500 opacity-80 pointer-events-none" />
                       {isMarked && (
-                        <Heart
-                          size={16}
-                          color="#f87171"
-                          fill="#f87171"
-                          className="absolute -top-2 -right-2 drop-shadow-md pointer-events-none"
-                        />
+                        <Heart size={16} color="#f87171" fill="#f87171" className="absolute -top-2 -right-2 drop-shadow-md pointer-events-none" />
                       )}
                       {iconImage ? (
-                        <img
-                          src={iconImage}
-                          alt="Custom pin"
-                          className="w-8 h-8 rounded-full border border-black/40 object-cover"
-                        />
+                        <img src={iconImage} alt="Pin" className="w-8 h-8 rounded-full border border-black/40 object-cover" />
                       ) : (
-                        <PinIcon
-                          size={24}
-                          fill={category.color}
-                          color="#000000"
-                          strokeWidth={1.5}
-                          className={isSelected ? 'text-white' : ''}
-                        />
+                        <PinIcon size={24} fill={category.color} color="#000000" strokeWidth={1.5} className={isSelected ? 'text-white' : ''} />
                       )}
                     </div>
-                    {!isSelected && (
+                    {!isSelected && !isMobile && (
                       <div className="absolute top-full mt-1 opacity-0 group-hover:opacity-100 bg-black/80 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap pointer-events-none border border-white/20 z-50">
                         {markerDef.label}
                       </div>
@@ -2198,181 +2792,144 @@ export default function App() {
             })}
           </div>
 
-          {selectedPinId &&
-            (() => {
-              const pin = pins.find((p) => p.id === selectedPinId);
-              if (!pin) return null;
+          {/* Pin Popup */}
+          {selectedPinId && (() => {
+            const pin = pins.find((p) => p.id === selectedPinId);
+            if (!pin) return null;
             const markerDef = mergedMarkers[pin.type] || FALLBACK_MARKER;
             return (
               <PinPopup
                 pin={pin}
                 markerDef={markerDef}
-                  onClose={() => setSelectedPinId(null)}
-                  onUpdateNote={updatePinNote}
-                  onMark={(id) => {
-                    setMarkedPinIds((prev) =>
-                      prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id],
-                    );
-                    setSelectedPinId(id);
-                  }}
-                  onDelete={deletePin}
+                isMobile={isMobile}
+                onClose={() => setSelectedPinId(null)}
+                onUpdateNote={updatePinNote}
+                onMark={(id) => {
+                  setMarkedPinIds((prev) => prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id]);
+                  setSelectedPinId(id);
+                }}
+                onDelete={deletePin}
+              />
+            );
+          })()}
+
+          {/* Floating Controls */}
+          <div className={`absolute z-10 pointer-events-none ${isMobile ? 'bottom-4 right-2 left-2' : 'bottom-4 right-4'}`}>
+            <div className={`flex ${isMobile ? 'justify-between' : 'items-end gap-3 justify-end'}`}>
+              {/* Icon Scale Slider */}
+              <div className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-3 py-2 border border-gray-700/50 shadow pointer-events-auto">
+                <Scaling size={14} className="text-gray-400" />
+                <input
+                  type="range"
+                  min="0.5"
+                  max="3"
+                  step="0.1"
+                  value={iconBaseScale}
+                  onChange={(e) => setIconBaseScale(parseFloat(e.target.value))}
+                  className="w-16 sm:w-28 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
-              );
-            })()}
+              </div>
 
-          {/* ======================
-              COMPACT CONTROLS (disabled, replaced by modal)
-             ====================== */}
-          {false && (
-          <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3 z-10 pointer-events-none">
-            {/* Button container (pointer-events-auto to enable interaction) */}
-            <div className="pointer-events-auto flex gap-2 items-center">
-              {/* Icon Size Slider (Horizontal) */}
-              {showSettings && (
-                <div className="flex items-center gap-2 mr-2">
-                  <div className="relative flex items-center bg-black/20 backdrop-blur-sm rounded-full px-3 h-10 border border-gray-700/50 animate-in fade-in slide-in-from-right-4">
-                    <Scaling size={16} className="text-gray-400 mr-2" />
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="3"
-                      step="0.1"
-                      value={iconBaseScale}
-                      onChange={(e) => setIconBaseScale(parseFloat(e.target.value))}
-                      className="w-24 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
+              {/* Zoom Controls */}
+              <div className="flex items-center gap-2 pointer-events-auto">
+                {isMobile ? (
+                  <div className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full px-2 py-1 border border-gray-700/50">
+                    <button
+                      onClick={() => setZoom(transform.scale - 0.2)}
+                      className="p-2 text-gray-300 hover:text-white"
+                    >
+                      <ZoomOut size={18} />
+                    </button>
+                    <span className="text-xs text-gray-400 w-12 text-center">{Math.round(transform.scale * 100)}%</span>
+                    <button
+                      onClick={() => setZoom(transform.scale + 0.2)}
+                      className="p-2 text-gray-300 hover:text-white"
+                    >
+                      <ZoomIn size={18} />
+                    </button>
                   </div>
-                  <button
-                    onClick={resetAllIcons}
-                    className="px-3 py-2 text-xs font-semibold rounded bg-gray-800 text-gray-200 border border-gray-700 hover:bg-gray-700 shadow"
-                    title="アイコンを初期状態に戻す（public/icon の画像を使用）"
-                  >
-                    アイコン初期化
-                  </button>
-                </div>
-              )}
-
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className={`p-3 rounded-full shadow-lg border transition-all ${
-                  showSettings
-                    ? 'bg-gray-700 text-white border-gray-500'
-                    : 'bg-gray-800 hover:bg-gray-700 text-gray-400 border-gray-700'
-                }`}
-                title="表示設定"
-              >
-                <Settings size={20} />
-              </button>
-
-              <div className="flex flex-col gap-2">
-                {/* Map Zoom Slider (Vertical) */}
-                {showSettings && (
-                  <div className="absolute bottom-24 right-1 h-32 w-8 flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 pointer-events-auto">
-                    {/* Wrapper to rotate input */}
-                    <div className="h-32 w-32 flex items-center justify-center -rotate-90 transform origin-center">
-                      <input
-                        type="range"
-                        min="0.2"
-                        max="5"
-                        step="0.1"
-                        value={transform.scale}
-                        onChange={(e) => setZoom(parseFloat(e.target.value))}
-                        className="w-24 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-orange-500 shadow-lg"
-                      />
+                ) : (
+                  <>
+                    <div className="relative h-32 sm:h-40 w-10 sm:w-12 flex items-center justify-center bg-black/30 backdrop-blur-sm rounded-full border border-gray-700/50 shadow">
+                      <div className="-rotate-90 w-24 sm:w-28">
+                        <input
+                          type="range"
+                          min="0.2"
+                          max="5"
+                          step="0.1"
+                          value={transform.scale}
+                          onChange={(e) => setZoom(parseFloat(e.target.value))}
+                          className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                        />
+                      </div>
                     </div>
-                  </div>
+                    <button
+                      onClick={() => setShowSettings(true)}
+                      className="bg-gray-800 hover:bg-gray-700 text-gray-200 p-2 rounded-full shadow-lg border border-gray-700"
+                    >
+                      <Settings size={18} />
+                    </button>
+                  </>
                 )}
-
               </div>
             </div>
           </div>
+
+          {/* Mobile Settings Button */}
+          {isMobile && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="absolute bottom-20 right-2 z-10 bg-gray-800 hover:bg-gray-700 text-gray-200 p-2.5 rounded-full shadow-lg border border-gray-700"
+            >
+              <Settings size={18} />
+            </button>
           )}
         </div>
       </div>
 
-      {/* Floating Controls */}
-      <div className="absolute bottom-4 right-4 flex items-end gap-3 z-10 pointer-events-none">
-        <div className="flex items-center gap-3 bg-black/30 backdrop-blur-sm rounded-full px-4 py-2 border border-gray-700/50 shadow pointer-events-auto">
-          <Scaling size={16} className="text-gray-400" />
-          <input
-            type="range"
-            min="0.5"
-            max="3"
-            step="0.1"
-            value={iconBaseScale}
-            onChange={(e) => setIconBaseScale(parseFloat(e.target.value))}
-            className="w-28 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-          />
-        </div>
-
-        <div className="flex flex-col items-center gap-3 pointer-events-auto">
-          <div className="relative h-40 w-12 flex items-center justify-center bg-black/30 backdrop-blur-sm rounded-full border border-gray-700/50 shadow">
-            <div className="-rotate-90 w-28">
-              <input
-                type="range"
-                min="0.2"
-                max="5"
-                step="0.1"
-                value={transform.scale}
-                onChange={(e) => setZoom(parseFloat(e.target.value))}
-                className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-orange-500"
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowSettings(true)}
-            className="bg-gray-800 hover:bg-gray-700 text-gray-200 p-2 rounded-full shadow-lg border border-gray-700"
-            title="設定"
-          >
-            <Settings size={18} />
-          </button>
-        </div>
-      </div>
-
+      {/* Share Toast */}
       {showShareToast && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded shadow-xl z-50 animate-bounce pointer-events-none">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded shadow-xl z-50 animate-bounce pointer-events-none text-sm">
           リンクをコピーしました
         </div>
       )}
 
+      {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-md p-5 space-y-4 shadow-2xl">
+          <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-md p-4 sm:p-5 space-y-4 shadow-2xl max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">設定</h3>
-              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-white p-1">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="flex justify-end gap-2">
-              <div className="flex-1 space-y-2 text-sm text-gray-300">
-                <div className="text-xs text-gray-400">初期アイコンに戻すピン種類</div>
-                <select
-                  value={resetTargetId}
-                  onChange={(e) => setResetTargetId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"
-                >
-                  {Object.values(mergedMarkers).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="space-y-3">
+              <div className="text-xs text-gray-400">初期アイコンに戻すピン種類</div>
+              <select
+                value={resetTargetId}
+                onChange={(e) => setResetTargetId(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white"
+              >
+                {Object.values(mergedMarkers).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
 
-              <div className="flex items-end gap-2">
+              <div className="flex gap-2">
                 <button
                   onClick={() => resetMarkerIcon(resetTargetId)}
                   disabled={!resetTargetId || isResettingIcon}
-                  className="px-3 py-2 text-xs font-semibold rounded bg-gray-800 text-gray-200 border border-gray-700 hover:bg-gray-700 shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-3 py-2.5 text-sm font-semibold rounded bg-gray-800 text-gray-200 border border-gray-700 hover:bg-gray-700 shadow disabled:opacity-50"
                 >
                   アイコン初期化
                 </button>
                 <button
                   onClick={() => setShowSettings(false)}
-                  className="px-3 py-2 text-xs font-semibold rounded bg-orange-600 hover:bg-orange-500 text-white"
+                  className="flex-1 px-3 py-2.5 text-sm font-semibold rounded bg-orange-600 hover:bg-orange-500 text-white"
                 >
                   閉じる
                 </button>
@@ -2382,12 +2939,13 @@ export default function App() {
         </div>
       )}
 
+      {/* Add Marker Dialog */}
       {showMarkerDialog && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-md p-4 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-md p-4 space-y-4 shadow-2xl max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">新しいピンを追加</h3>
-              <button onClick={() => setShowMarkerDialog(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setShowMarkerDialog(false)} className="text-gray-400 hover:text-white p-1">
                 <X size={18} />
               </button>
             </div>
@@ -2396,7 +2954,7 @@ export default function App() {
               value={newMarkerName}
               onChange={(e) => setNewMarkerName(e.target.value)}
               placeholder="ピン名を入力"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:border-orange-500 outline-none"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2.5 text-sm text-white focus:border-orange-500 outline-none"
             />
 
             <div>
@@ -2435,13 +2993,13 @@ export default function App() {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setShowMarkerDialog(false)}
-                className="px-3 py-2 text-xs rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="px-4 py-2.5 text-sm rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
               >
                 キャンセル
               </button>
               <button
                 onClick={confirmAddCustomMarker}
-                className="px-3 py-2 text-xs rounded bg-orange-600 hover:bg-orange-500 text-white font-bold"
+                className="px-4 py-2.5 text-sm rounded bg-orange-600 hover:bg-orange-500 text-white font-bold"
               >
                 追加
               </button>
@@ -2449,12 +3007,6 @@ export default function App() {
           </div>
         </div>
       )}
-
     </div>
-    )
   );
 }
-
-
-
-
