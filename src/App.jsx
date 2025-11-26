@@ -424,6 +424,7 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDele
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!onUpdateImage) return;
     try {
       const compressedBase64 = await compressImage(file);
       onUpdateImage(pin.id, compressedBase64);
@@ -1728,6 +1729,24 @@ export default function App() {
     }
   };
 
+  const updatePinImage = async (pinId, dataUrl) => {
+    if (!user && activeMode === 'shared') return;
+    if (!canSync || activeMode === 'local') {
+      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, imageUrl: dataUrl } : p)));
+      return;
+    }
+    if (!roomId) return;
+    const collectionName = `${roomId}_pins`;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId), {
+        imageUrl: dataUrl,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const visiblePins = pins.filter((p) => {
     if (p.mapId !== currentMap) return false;
     const pinProfile = p.profileId || 'default';
@@ -2803,6 +2822,7 @@ export default function App() {
                 markerDef={markerDef}
                 isMobile={isMobile}
                 onClose={() => setSelectedPinId(null)}
+                onUpdateImage={updatePinImage}
                 onUpdateNote={updatePinNote}
                 onMark={(id) => {
                   setMarkedPinIds((prev) => prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id]);
