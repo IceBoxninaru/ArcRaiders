@@ -1671,22 +1671,7 @@ export default function App() {
           <h1 className="font-bold text-base tracking-wider text-gray-100">TACTICAL</h1>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 justify-center min-w-0">
-          <div className="flex items-center bg-gray-800 rounded p-0.5 gap-1 overflow-x-auto scrollbar-hide">
-            {Object.values(MAP_CONFIG).map((map) => (
-              <button
-                key={map.id}
-                onClick={() => setCurrentMap(map.id)}
-                className={`px-3 py-1 text-xs font-bold rounded transition-colors uppercase whitespace-nowrap ${
-                  currentMap === map.id
-                    ? 'bg-orange-600 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                }`}
-              >
-                {map.name}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <select
             value={currentMap}
             onChange={(e) => setCurrentMap(e.target.value)}
