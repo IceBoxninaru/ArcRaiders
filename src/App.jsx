@@ -1825,6 +1825,7 @@ export default function App() {
             <input
               type="text"
               value={displayName}
+
               onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
               placeholder="記載者名"
               className="bg-transparent text-sm text-white outline-none w-28"
@@ -1890,32 +1891,10 @@ export default function App() {
                     }
                     setShowSharedSetup(true);
                   }}
-                  className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
+                  className="px-3 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50 whitespace-nowrap"
                   disabled={roomMode === "local"}
                 >
                   接続/発行
-                </button>
-                <button
-                  onClick={() => {
-                    setModeChosen(false);
-                    setRoomMode("local");
-                    setRoomId(null);
-                    setRoomInput(lastSharedRoom || "");
-                  }}
-                  className="px-2 py-1 text-xs bg-slate-800 border border-slate-700 text-gray-200 rounded hover:bg-slate-700"
-                >
-                  モード選択へ
-                </button>
-                <button
-                  onClick={() => {
-                    setModeChosen(false);
-                    setRoomMode("local");
-                    setRoomId(null);
-                    setRoomInput(lastSharedRoom || "");
-                  }}
-                  className="px-2 py-1 text-xs bg-slate-800 border border-slate-700 text-gray-200 rounded hover:bg-slate-700"
-                >
-                  モード選択へ
                 </button>
               </div>
             </div>
