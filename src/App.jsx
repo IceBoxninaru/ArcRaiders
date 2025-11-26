@@ -1959,10 +1959,10 @@ export default function App() {
           </button>
           <button
             onClick={takeScreenshot}
-            className="bg-green-600 hover:bg-green-500 text-white px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1"
+            className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1"
+            title="スクリーンショット"
           >
             <Download size={14} />
-            スクリーンショット
           </button>
         </div>
       </header>
