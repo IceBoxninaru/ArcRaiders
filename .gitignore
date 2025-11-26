@@ -1,19 +1,13 @@
 
 site/assets/map/
-
+arcraiders_workbook_v2.xlsx
 ~$*.xlsx
 *.xlsx
-
-arcraiders_workbook_v2.xlsx
-~$*.xlsx
-
-arcraiders_workbook_v2.xlsx
-~$*.xlsx
-site/assets/map/
 
 # Node / Vite build artifacts
 node_modules
 dist
+docs
 .vite
 
 .claude/settings.local.json
