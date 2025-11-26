@@ -391,6 +391,17 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateNote, onDelete, onMark }) =
       }}
       onClick={(e) => e.stopPropagation()}
     >
+      <div className="relative h-40 bg-gray-800 flex items-center justify-center overflow-hidden">
+        {pin.imageUrl ? (
+          <img src={pin.imageUrl} alt="Pin Attachment" className="w-full h-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center text-gray-500">
+            <Camera size={32} className="mb-2 opacity-50" />
+            <span className="text-xs">No Image</span>
+          </div>
+        )}
+      </div>
+
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <div>
@@ -423,23 +434,6 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateNote, onDelete, onMark }) =
                     </button>
                   </div>
                 </div>
-
-        <div className="flex gap-2 mb-2">
-          <button
-            onClick={() => iconInputRef.current?.click()}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded transition-colors flex items-center justify-center gap-2"
-          >
-            <Camera size={14} />
-            アイコン変更
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded transition-colors flex items-center justify-center gap-2"
-          >
-            <Upload size={14} />
-            画像添付
-          </button>
-        </div>
 
         <div className="flex gap-2">
           <button
