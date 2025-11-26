@@ -1899,26 +1899,6 @@ export default function App() {
               </div>
             </div>
             <div className="flex gap-2 mt-2">
-              <div className="flex flex-col gap-1 flex-1">
-                <label className="text-[10px] text-gray-400">マップ名</label>
-                <input
-                  value={currentMapMeta.title || MAP_CONFIG[currentMap]?.name || ''}
-                  onChange={(e) => updateMapMeta(currentMap, { title: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
-                  placeholder="マップ名を入力"
-                />
-              </div>
-              <div className="flex flex-col gap-1 flex-1">
-                <label className="text-[10px] text-gray-400">メモ</label>
-                <input
-                  value={currentMapMeta.note || ''}
-                  onChange={(e) => updateMapMeta(currentMap, { note: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
-                  placeholder="メモを入力"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
               <button
                 onClick={() => setSelectedTool('move')}
                 className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
