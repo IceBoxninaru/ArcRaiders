@@ -1825,6 +1825,17 @@ export default function App() {
           >
             共有
           </button>
+          <button
+            onClick={() => {
+              setModeChosen(false);
+              setRoomMode("local");
+              setRoomId(null);
+              setRoomInput(lastSharedRoom || "");
+            }}
+            className="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-all border border-gray-700"
+          >
+            モード選択へ
+          </button>
         </div>
       </header>
 
