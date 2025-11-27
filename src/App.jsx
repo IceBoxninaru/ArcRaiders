@@ -1062,6 +1062,8 @@ export default function App() {
   const [sharedMapMeta, setSharedMapMeta] = useState({});
   const [roomInfo, setRoomInfo] = useState(null);
   const [roomInfoLoading, setRoomInfoLoading] = useState(false);
+  const [firebaseBlocked, setFirebaseBlocked] = useState(false);
+  const [firebaseBlockReason, setFirebaseBlockReason] = useState('');
   
   // Mobile-specific states
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1078,6 +1080,7 @@ export default function App() {
     () => (db && roomId ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId) : null),
     [roomId],
   );
+  const firebaseAvailable = useFirebase && !firebaseBlocked;
   const [modeError, setModeError] = useState('');
   const pendingEntries = roomInfo?.pending || [];
   const normalizedPending = useMemo(
@@ -1091,7 +1094,7 @@ export default function App() {
     () => Boolean(user && normalizedPending.find((p) => p.uid === user.uid)),
     [user, normalizedPending],
   );
-  const activeMode = roomMode === 'shared' && roomId ? 'shared' : 'local';
+  const activeMode = roomMode === 'shared' && roomId && firebaseAvailable ? 'shared' : 'local';
   const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
   const allowedUsers = roomInfo?.allowedUsers || [];
   const isApproved = useMemo(() => {
@@ -1111,7 +1114,29 @@ export default function App() {
     }
   };
 
-  const canSync = useMemo(() => useFirebase && Boolean(roomId) && isApproved, [roomId, isApproved]);
+  const canSync = useMemo(
+    () => firebaseAvailable && Boolean(roomId) && isApproved,
+    [firebaseAvailable, roomId, isApproved],
+  );
+  const firebaseQuotaMessage =
+    'Firestoreの無料枠を使い切ったため共有モードを一時停止し、ローカルモードで続行します。';
+  const isQuotaError = (err) => {
+    const code = err?.code || '';
+    const message = err?.message || '';
+    return code === 'resource-exhausted' || code === 'quota-exceeded' || /quota|exhausted/i.test(message);
+  };
+  const handleFirestoreError = useCallback(
+    (err, context = '') => {
+      console.error(context || 'Firestore error', err);
+      if (!isQuotaError(err)) return false;
+      if (firebaseBlocked) return true;
+      setFirebaseBlocked(true);
+      setFirebaseBlockReason(firebaseQuotaMessage);
+      setActionMessage(firebaseQuotaMessage);
+      return true;
+    },
+    [firebaseBlocked, firebaseQuotaMessage],
+  );
   const rateLimitRef = useRef({ pinAdd: 0, noteUpdate: 0, imageUpdate: 0 });
 
   const [openCategories, setOpenCategories] = useState({
@@ -1195,6 +1220,15 @@ export default function App() {
     });
     return counts;
   }, [pins, currentMap, currentLayer]);
+
+  useEffect(() => {
+    if (!firebaseBlocked) return;
+    setRoomInfo(null);
+    setRoomInfoLoading(false);
+    if (!localPins.length && sharedPins.length) {
+      setLocalPins(sharedPins);
+    }
+  }, [firebaseBlocked, sharedPins, localPins.length]);
 
   const mapRef = useRef(null);
   const mapWrapperRef = useRef(null);
@@ -1324,7 +1358,7 @@ export default function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      if (!useFirebase) {
+      if (!firebaseAvailable) {
         setUser({ uid: 'local-demo' });
         return;
       }
@@ -1335,14 +1369,14 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error('Auth error:', err);
+        handleFirestoreError(err, 'Auth error');
       }
     };
     initAuth();
-    if (!useFirebase) return undefined;
+    if (!firebaseAvailable) return undefined;
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
-  }, []);
+  }, [firebaseAvailable, handleFirestoreError]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1383,7 +1417,7 @@ export default function App() {
 
   // Room info (owner/allowed/pending)
   useEffect(() => {
-    if (!useFirebase || !roomId || !db) {
+    if (!firebaseAvailable || !roomId || !db) {
       setRoomInfo(null);
       return undefined;
     }
@@ -1396,17 +1430,17 @@ export default function App() {
         setRoomInfoLoading(false);
       },
       (err) => {
-        console.error('Room info subscribe error', err);
+        handleFirestoreError(err, 'Room info subscribe error');
         setRoomInfoLoading(false);
       },
     );
     return () => unsub();
-  }, [roomId, useFirebase, roomDocRef]);
+  }, [roomId, firebaseAvailable, roomDocRef, handleFirestoreError]);
 
   // Ensure room doc exists & owner is allowed
   useEffect(() => {
     const ensureRoom = async () => {
-      if (!useFirebase || !roomId || !db || !user) return;
+      if (!firebaseAvailable || !roomId || !db || !user) return;
       try {
         if (!roomInfo) {
           if (!roomCreator) return;
@@ -1430,17 +1464,19 @@ export default function App() {
           });
         }
       } catch (err) {
+        const handled = handleFirestoreError(err, 'Ensure room failed');
+        if (handled) return;
         console.error('Ensure room failed', err);
         setActionMessage('権限エラー: Firestore ルールと appId を確認してください。');
       }
     };
     ensureRoom();
-  }, [roomId, user, roomInfo, useFirebase, roomDocRef, roomCreator]);
+  }, [roomId, user, roomInfo, firebaseAvailable, roomDocRef, roomCreator, handleFirestoreError]);
 
   // If visitor is not approved, add to pending
   useEffect(() => {
     const sendPending = async () => {
-      if (!useFirebase || !roomId || !db || !user) return;
+      if (!firebaseAvailable || !roomId || !db || !user) return;
       if (!roomInfo) return;
       if (roomInfo.ownerUid === user.uid) return;
       const alreadyAllowed = roomInfo.allowedUsers?.includes(user.uid);
@@ -1455,13 +1491,15 @@ export default function App() {
             }),
           });
         } catch (err) {
+          const handled = handleFirestoreError(err, 'Add pending failed');
+          if (handled) return;
           console.error('Add pending failed', err);
           setActionMessage('権限エラー: オーナーに許可を依頼できません。');
         }
       }
     };
     sendPending();
-  }, [roomId, user, roomInfo, useFirebase, displayName, roomDocRef]);
+  }, [roomId, user, roomInfo, firebaseAvailable, displayName, roomDocRef, handleFirestoreError]);
 
   const centerMap = useCallback(() => {
     const containerW = windowWidth;
@@ -1483,20 +1521,20 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     params.set('map', currentMap);
     params.set('profile', activeProfile);
-    if (roomId) params.set('room', roomId);
+    if (roomId && firebaseAvailable) params.set('room', roomId);
     else params.delete('room');
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [currentMap, activeProfile, roomId, centerMap]);
+  }, [currentMap, activeProfile, roomId, centerMap, firebaseAvailable]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     params.set('map', currentMap);
     params.set('profile', activeProfile);
-    if (roomId) params.set('room', roomId);
+    if (roomId && firebaseAvailable) params.set('room', roomId);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [activeProfile, currentMap, roomId]);
+  }, [activeProfile, currentMap, roomId, firebaseAvailable]);
 
   // Persist local pins
   useEffect(() => {
@@ -1521,10 +1559,13 @@ export default function App() {
         });
         setSharedPins(loadedPins);
       },
-      (error) => console.error(error),
+      (error) => {
+        const handled = handleFirestoreError(error, 'Pins subscribe error');
+        if (!handled) console.error(error);
+      },
     );
     return () => unsubscribe();
-  }, [user, roomId, canSync, activeMode]);
+  }, [user, roomId, canSync, activeMode, handleFirestoreError]);
 
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
@@ -1540,10 +1581,13 @@ export default function App() {
         });
         setSharedMapMeta(loaded);
       },
-      (error) => console.error(error),
+      (error) => {
+        const handled = handleFirestoreError(error, 'Map meta subscribe error');
+        if (!handled) console.error(error);
+      },
     );
     return () => unsubscribe();
-  }, [user, roomId, activeMode, canSync]);
+  }, [user, roomId, activeMode, canSync, handleFirestoreError]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -1753,11 +1797,12 @@ export default function App() {
     setActionMessage('');
     
     if (activeMode === 'shared' && (!user || !roomId)) {
-      if (useFirebase && auth) {
+      if (firebaseAvailable && auth) {
         try {
           await signInAnonymously(auth);
         } catch (err) {
-          console.error('Auth retry failed', err);
+          const handled = handleFirestoreError(err, 'Auth retry failed');
+          if (!handled) console.error('Auth retry failed', err);
         }
       }
       alert('共有モードでピンを置くにはRoom接続とサインインが必要です。');
@@ -1856,7 +1901,8 @@ export default function App() {
       setSelectedTool('move');
       rateLimitRef.current.pinAdd = now;
     } catch (err) {
-      console.error('Error adding pin:', err);
+      const handled = handleFirestoreError(err, 'Error adding pin');
+      if (!handled) console.error('Error adding pin:', err);
       setActionMessage('権限エラー: ピン作成が拒否されました。FirestoreルールとappIdを確認してください。');
     }
   };
@@ -1880,7 +1926,8 @@ export default function App() {
       if (selectedPinId === pinId) setSelectedPinId(null);
       setMarkedPinIds((prev) => prev.filter((id) => id !== pinId));
     } catch (err) {
-      console.error(err);
+      const handled = handleFirestoreError(err, 'Delete pin failed');
+      if (!handled) console.error(err);
     }
   };
 
@@ -1911,6 +1958,8 @@ export default function App() {
       setSelectedPinId(null);
       setActionMessage(`削除しました: ${docs.length} 件`);
     } catch (err) {
+      const handled = handleFirestoreError(err, 'Delete all pins failed');
+      if (handled) return;
       console.error('Delete all pins failed', err);
       setActionMessage('削除に失敗しました');
     } finally {
@@ -1953,6 +2002,8 @@ export default function App() {
       setSelectedPinId(null);
       setActionMessage(`削除しました: ${docs.length} 件`);
     } catch (err) {
+      const handled = handleFirestoreError(err, 'Delete pins by type failed');
+      if (handled) return;
       console.error('Delete pins by type failed', err);
       setActionMessage('削除に失敗しました');
     } finally {
@@ -1993,6 +2044,8 @@ export default function App() {
       applyRoomId(null);
       setActionMessage('ルームを削除しました');
     } catch (err) {
+      const handled = handleFirestoreError(err, 'Delete room failed');
+      if (handled) return;
       console.error('Delete room failed', err);
       setActionMessage('ルーム削除に失敗しました');
     } finally {
@@ -2036,7 +2089,8 @@ export default function App() {
       });
       setActionMessage('保存完了');
     } catch (err) {
-      console.error(err);
+      const handled = handleFirestoreError(err, 'Update pin note failed');
+      if (!handled) console.error(err);
       setActionMessage('保存に失敗');
     } finally {
       setTimeout(() => setActionMessage(''), 2000);
@@ -2067,12 +2121,13 @@ export default function App() {
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
-      console.error(err);
+      const handled = handleFirestoreError(err, 'Update pin image failed');
+      if (!handled) console.error(err);
     }
   };
 
   const visiblePins = pins.filter((p) => {
-    if (roomId && p.roomId && p.roomId !== roomId) return false;
+    if (activeMode === 'shared' && roomId && p.roomId && p.roomId !== roomId) return false;
     if (p.mapId !== currentMap) return false;
     const pinProfile = p.profileId || 'default';
     if (pinProfile !== activeProfile) return false;
@@ -2238,6 +2293,9 @@ export default function App() {
           roomId,
           profileId: candidate,
           note: p.note || '',
+        }).catch((err) => {
+          const handled = handleFirestoreError(err, 'Copy profile pins');
+          if (!handled) console.error('Copy profile pins failed', err);
         });
       });
     }
@@ -2415,7 +2473,8 @@ export default function App() {
       });
       setActionMessage(`許可しました: ${entry.name || entry.uid}`);
     } catch (err) {
-      console.error('Approve failed', err);
+      const handled = handleFirestoreError(err, 'Approve failed');
+      if (!handled) console.error('Approve failed', err);
       setActionMessage('許可に失敗しました');
     } finally {
       setTimeout(() => setActionMessage(''), 2000);
@@ -2431,7 +2490,8 @@ export default function App() {
       });
       setActionMessage(`拒否しました: ${entry.name || entry.uid}`);
     } catch (err) {
-      console.error('Reject failed', err);
+      const handled = handleFirestoreError(err, 'Reject failed');
+      if (!handled) console.error('Reject failed', err);
       setActionMessage('拒否に失敗しました');
     } finally {
       setTimeout(() => setActionMessage(''), 2000);
@@ -2686,6 +2746,12 @@ export default function App() {
           <div className="bg-blue-900/90 border border-blue-700 text-xs px-4 py-2 rounded shadow-lg">
             {actionMessage}
           </div>
+        </div>
+      )}
+      
+      {firebaseBlocked && (
+        <div className="absolute top-14 right-2 z-50 bg-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow">
+          {firebaseBlockReason || firebaseQuotaMessage}
         </div>
       )}
       
