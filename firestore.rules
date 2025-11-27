@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function roomDoc(appId, roomId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId));
+    }
+
+    function isRoomOwner(room) {
+      return isSignedIn() && room.exists() && room.data.ownerUid == request.auth.uid;
+    }
+
+    function isRoomMember(room) {
+      return isSignedIn()
+        && room.exists()
+        && (room.data.ownerUid == request.auth.uid || room.data.allowedUsers.hasAny([request.auth.uid]));
+    }
+
+    function requestedRoomId() {
+      return request.resource.data.roomId != null
+        ? request.resource.data.roomId
+        : (resource.data.roomId != null ? resource.data.roomId : null);
+    }
+
+    function collectionMatchesRoom(roomId, collectionId) {
+      return roomId != null && collectionId.matches('^' + roomId + '_(pins|mapmeta)$');
+    }
+
+    match /artifacts/{appId}/public/data/rooms/{roomId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isRoomOwner(roomDoc(appId, roomId));
+    }
+
+    // Pins/mapmeta collections are named {roomId}_pins / {roomId}_mapmeta and each document
+    // must include roomId to tie back to the parent room. Pending/join flows should be routed
+    // through Cloud Functions so only owners/allowed users can mutate access control.
+    match /artifacts/{appId}/public/data/{collectionId}/{docId} {
+      allow read: if isSignedIn()
+        && collectionMatchesRoom(requestedRoomId(), collectionId)
+        && isRoomMember(roomDoc(appId, requestedRoomId()));
+
+      allow create, update, delete: if isSignedIn()
+        && collectionMatchesRoom(requestedRoomId(), collectionId)
+        && isRoomMember(roomDoc(appId, requestedRoomId()));
+    }
+  }
+}

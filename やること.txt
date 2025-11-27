@@ -1,20 +1,16 @@
-﻿- Firestore/Cloud Functions で owner/allowedUsers を強制チェックするセキュリティルールを作成
-- mapId/layerId/type/座標/文字列長のバリデーションとピン数・プロファイル数・レート上限、TTL クリーンアップを追加
-- 画像/アイコンを Firebase Storage に移行し、MIME/サイズ検証・サムネイル生成・署名付き URL・ウイルススキャンを実装
-- クライアント/サーバーの監視とログ（Sentry など）を追加し、書き込み拒否やレート制限のメトリクスを監視
-- 環境分離（.env）と CI（lint/テスト/E2E）、CSP・セキュリティヘッダー適用
-- ピン詳細の画像アップロード動作をローカル/共有モードで確認する
+【実装済み】
+- Firestore 書き込みに roomId と expiresAt を付与し、ピン追加時にマップ/レイヤー/タイプ/座標のバリデーション、ピン上限、ノート文字数、画像サイズ、簡易レートリミットを追加（src/App.jsx）。
+- mapmeta/pin 読み込み時の roomId 補完、プロフィール上限チェックを追加。Vite の環境変数（VITE_FIREBASE_* / VITE_APP_ID）を読めるようにし、.env.example を配置。
 
+【ドラフト/準備】
+- Firestore Security Rules を追加（firestore.rules）。owner/allowedUsers のみ書き込み可、{roomId}_pins / {roomId}_mapmeta へのアクセスに roomId 必須。pending は Cloud Functions 経由で扱う想定。
+- ピン/マップメタに TTL 用 expiresAt をタグ付け済み。Firestore TTL ポリシー有効化と既存データの roomId/expiresAt バックフィルが必要。
 
-Production Gaps
-
-認証と権限: src/App.jsx は匿名/カスタムトークンのみで artifacts/{appId}/public/data/{roomId}_pins へ直接書き込み。オーナー/allowedUsers の確認を Firestore Security Rules か Cloud Functions で必ず強制し、書き込みは許可ユーザーだけに限定してください（roomのpending承認もサーバー側で判定）。
-データ検証と上限: mapId/layerId/type/座標/文字数をサーバー側でバリデートし、1ルームあたりのピン数・プロファイル数・リクエスト頻度に上限を設ける。期限切れルームや古いピンの自動クリーンアップ（TTL）も用意すると運用が安定します。
-画像/アイコンの扱い: 現状は base64 圧縮で保持しています。Firebase Storage などに移し、MIME検証・ファイルサイズ上限・サムネイル生成・署名付きURL配布・ウイルススキャン（Cloud Functions + ClamAV など）を入れると安全かつ高速です。
-監視とログ: Firestore/Storage 操作の失敗をユーザーに見える形でリトライしつつ、Sentry 等でクライアントエラーを収集。サーバー側でも書き込み拒否やレート制限発火を計測し、アラートを組み込んでください。
-環境分離とリリース: 本番/ステージング/ローカル用の Firebase 設定を .env 経由で分離し、CIで lint・型チェック・E2E（ピン追加/削除/同期フロー）を回すパイプラインを用意。CSP/Helmet 相当のヘッダー設定と依存アップデート監視もセットで。
-Nice to Have
-
-監査性: 誰がいつピンを追加/削除したかの履歴、復元/エクスポート（GeoJSON/CSV）機能。
-同期UX: 「同期中/オフライン/リトライ中」のステータス表示と手動リロードボタン。大量ピン時のパフォーマンス最適化（クラスタリング or レイヤー単位の遅延ロード）。
-招待フロー: ルーム招待リンクに期限付きトークンを付与し、オーナーが UI から一括承認/ブロックできるようにする。
+【TODO（高優先）】
+- pending 承認/allowedUsers 更新を Cloud Functions 経由に変更し、Rules と整合させる。
+- 画像アップロードを Firebase Storage 経由に移行（MIME/サイズ検証、署名付き URL、ウイルススキャン、サムネ生成）。
+- サーバー側バリデーション＋レートリミット（Cloud Functions）実装とメトリクス送信。
+- E2E/CI パイプライン追加（lint/test/E2E）、CSP/セキュリティヘッダー適用。
+- ルーム/ピン TTL を Firestore TTL で有効化し、期限切れクリーンアップを確認。
+- 共有/ローカルの画像アップロード動作を自動テストに組み込む。
+- 監査ログ・エクスポート機能、同期 UX 改善、招待リンクの期限付きトークン対応。

@@ -17,6 +17,10 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
+  Timestamp,
+  getDocs,
+  writeBatch,
+  where,
   query,
   arrayUnion,
   arrayRemove,
@@ -119,7 +123,19 @@ try {
   parsedConfig = {};
 }
 
-const firebaseEnabled = Boolean(parsedConfig && parsedConfig.apiKey);
+const envFirebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+};
+const hasEnvConfig = Object.values(envFirebaseConfig).some(Boolean);
+const firebaseConfig = hasEnvConfig ? envFirebaseConfig : parsedConfig;
+
+const firebaseEnabled = Boolean(firebaseConfig && firebaseConfig.apiKey);
 const firebaseDisabledFlag =
   typeof globalThis !== 'undefined' && typeof globalThis.__disable_firebase !== 'undefined'
     ? Boolean(globalThis.__disable_firebase)
@@ -131,7 +147,7 @@ let db = null;
 let firebaseReady = false;
 if (firebaseEnabled && !firebaseDisabledFlag) {
   try {
-    app = initializeApp(parsedConfig);
+    app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
     firebaseReady = Boolean(app && auth && db);
@@ -146,7 +162,7 @@ const useFirebase = firebaseReady;
 const appId =
   typeof globalThis !== 'undefined' && typeof globalThis.__app_id !== 'undefined'
     ? globalThis.__app_id
-    : 'default-app';
+    : import.meta.env.VITE_APP_ID || 'default-app';
 
 /* ========================================
   GAME DATA DEFINITIONS
@@ -205,6 +221,41 @@ export const MAP_CONFIG = {
     ],
   },
 };
+
+/* ========================================
+  VALIDATION / LIMITS
+  ========================================
+*/
+
+const PIN_LIMITS = {
+  maxPinsPerRoom: 500,
+  maxProfilesPerRoom: 20,
+  maxNoteLength: 500,
+  maxImageBytes: 800 * 1024, // ~800KB (base64 is larger than the raw file)
+  pinTtlMs: 1000 * 60 * 60 * 24 * 30, // 30 days
+  roomTtlMs: 1000 * 60 * 60 * 24 * 90, // 90 days
+  rate: {
+    pinAddMs: 800,
+    noteUpdateMs: 400,
+    imageUpdateMs: 1500,
+  },
+};
+
+const clampToRange = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const estimateDataUrlBytes = (dataUrl = '') => {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return 0;
+  const base64 = dataUrl.split(',')[1] || '';
+  return Math.floor((base64.length * 3) / 4);
+};
+
+const isLayerValidForMap = (mapDef, layerId) => {
+  if (!mapDef?.layers) return !layerId;
+  if (!layerId) return true;
+  return mapDef.layers.some((layer) => layer.id === layerId);
+};
+
+const ttlTimestamp = (ms) => Timestamp.fromMillis(Date.now() + ms);
 
 const MARKER_CATEGORIES = {
   containers: { label: 'コンテナ', color: '#f59e0b' },
@@ -989,6 +1040,8 @@ export default function App() {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.4 });
   const [iconBaseScale, setIconBaseScale] = useState(1.0);
   const [showSettings, setShowSettings] = useState(false);
+  const [isDeletingPins, setIsDeletingPins] = useState(false);
+  const [deleteTargetType, setDeleteTargetType] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showShareToast, setShowShareToast] = useState(false);
@@ -1055,6 +1108,7 @@ export default function App() {
   };
 
   const canSync = useMemo(() => useFirebase && Boolean(roomId) && isApproved, [roomId, isApproved]);
+  const rateLimitRef = useRef({ pinAdd: 0, noteUpdate: 0, imageUpdate: 0 });
 
   const [openCategories, setOpenCategories] = useState({
     containers: true,
@@ -1287,17 +1341,23 @@ export default function App() {
         if (!roomInfo) {
           if (!roomCreator) return;
           await setDoc(roomDocRef, {
+            roomId,
             ownerUid: user.uid,
             allowedUsers: [user.uid],
             pending: [],
             createdAt: serverTimestamp(),
+            expiresAt: ttlTimestamp(PIN_LIMITS.roomTtlMs),
+            lastActiveAt: serverTimestamp(),
           });
           return;
         }
         if (roomInfo.ownerUid === user.uid) {
-          if (!roomInfo.allowedUsers?.includes(user.uid)) {
-            await updateDoc(roomDocRef, { allowedUsers: arrayUnion(user.uid) });
-          }
+          const patch = { allowedUsers: roomInfo.allowedUsers?.includes(user.uid) ? roomInfo.allowedUsers : arrayUnion(user.uid) };
+          await updateDoc(roomDocRef, {
+            ...patch,
+            lastActiveAt: serverTimestamp(),
+            expiresAt: ttlTimestamp(PIN_LIMITS.roomTtlMs),
+          });
         }
       } catch (err) {
         console.error('Ensure room failed', err);
@@ -1383,7 +1443,10 @@ export default function App() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const loadedPins = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const loadedPins = snapshot.docs.map((d) => {
+          const data = d.data();
+          return { id: d.id, ...data, roomId: data.roomId || roomId };
+        });
         setSharedPins(loadedPins);
       },
       (error) => console.error(error),
@@ -1400,7 +1463,8 @@ export default function App() {
       (snapshot) => {
         const loaded = {};
         snapshot.docs.forEach((docSnap) => {
-          loaded[docSnap.id] = docSnap.data();
+          const data = docSnap.data();
+          loaded[docSnap.id] = { ...data, roomId: data.roomId || roomId };
         });
         setSharedMapMeta(loaded);
       },
@@ -1614,6 +1678,7 @@ export default function App() {
   const handleMapClick = async (e) => {
     if (e.target.closest('.pin-element')) return;
     if (isDragging) return;
+    setActionMessage('');
     
     if (activeMode === 'shared' && (!user || !roomId)) {
       if (useFirebase && auth) {
@@ -1634,12 +1699,39 @@ export default function App() {
 
     if (selectedTool === 'move') return;
 
+    const mapDef = MAP_CONFIG[currentMap];
+    if (!mapDef) {
+      setActionMessage('�}�b�v�ݒ�ɏ������܂��B');
+      return;
+    }
+    if (!isLayerValidForMap(mapDef, currentLayer)) {
+      setActionMessage('���C���[�ݒ�ɏ������܂��B');
+      return;
+    }
+    if (!mergedMarkers[selectedTool]) {
+      setActionMessage('���킹���Ă����킹�����g�ł��B');
+      return;
+    }
+    const now = Date.now();
+    if (now - rateLimitRef.current.pinAdd < PIN_LIMITS.rate.pinAddMs) {
+      setActionMessage('�s���쐬�̑Ώۂ����܂��B�ʂ̃X�g�b�v���Ă�������B');
+      return;
+    }
+
     const rect = mapRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left) / transform.scale;
     const y = (e.clientY - rect.top) / transform.scale;
-    const config = MAP_CONFIG[currentMap];
-
-    if (x < 0 || y < 0 || x > config.width || y > config.height) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < 0 || y < 0 || x > mapDef.width || y > mapDef.height) {
+      setActionMessage('�W�v��}�b�v�O�̃o�C�g�A�E�g�ł��B');
+      return;
+    }
+    const currentPinCount = pins.length;
+    if (currentPinCount >= PIN_LIMITS.maxPinsPerRoom) {
+      setActionMessage(`�s���������܂����B�ő� ${PIN_LIMITS.maxPinsPerRoom} �܂ł��ł��B`);
+      return;
+    }
+    rateLimitRef.current.pinAdd = now;
 
     if (!canSync || activeMode === 'local') {
       const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1647,6 +1739,7 @@ export default function App() {
         ...prev,
         {
           id: localId,
+          roomId: roomId || 'local',
           mapId: currentMap,
           layerId: currentLayer,
           x,
@@ -1656,6 +1749,7 @@ export default function App() {
           profileId: activeProfile,
           note: '',
           createdAt: new Date(),
+          expiresAt: new Date(Date.now() + PIN_LIMITS.pinTtlMs),
           createdBy: user?.uid || 'local',
           createdByName: displayName || '匿名',
         },
@@ -1670,6 +1764,7 @@ export default function App() {
     try {
       const collectionName = `${roomId}_pins`;
       const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', collectionName), {
+        roomId,
         mapId: currentMap,
         layerId: currentLayer,
         x,
@@ -1679,6 +1774,7 @@ export default function App() {
         profileId: activeProfile,
         note: '',
         createdAt: serverTimestamp(),
+        expiresAt: ttlTimestamp(PIN_LIMITS.pinTtlMs),
         createdBy: user.uid,
         createdByName: displayName || '匿名',
       });
@@ -1712,17 +1808,105 @@ export default function App() {
     }
   };
 
+  const deleteAllRoomPins = async () => {
+    if (!isOwner || !roomId || !db) {
+      alert('���[�i�[�̂݌��\�ł��܂��B');
+      return;
+    }
+    if (activeMode !== 'shared') {
+      alert('���L�u���[�h�݂̂ł��܂��B');
+      return;
+    }
+    if (!window.confirm('���̃���[���̃s���S�ď폜���܂��B���B�����Ă��������B')) return;
+    setIsDeletingPins(true);
+    setActionMessage('�폜���s��...');
+    try {
+      const collectionName = `${roomId}_pins`;
+      const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+      const batchSize = 400;
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const slice = docs.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        slice.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      setSharedPins([]);
+      setSelectedPinId(null);
+      setActionMessage(`�폜���܂���: ${docs.length} �_�C�\�b�v`);
+    } catch (err) {
+      console.error('Delete all pins failed', err);
+      setActionMessage('�폜�Ɏ��s���܂���');
+    } finally {
+      setTimeout(() => setActionMessage(''), 3000);
+      setIsDeletingPins(false);
+    }
+  };
+
+  const deletePinsByType = async () => {
+    if (!isOwner || !roomId || !db) {
+      alert('オーナーだけが実行できます。');
+      return;
+    }
+    if (activeMode !== 'shared') {
+      alert('共有モードのときのみ実行できます。');
+      return;
+    }
+    const targetType = deleteTargetType || resetTargetId || '';
+    if (!targetType) {
+      alert('削除するピンタイプを選んでください。');
+      return;
+    }
+    if (!window.confirm(`タイプ「${targetType}」のピンをすべて削除します。よろしいですか？（取り消せません）`)) return;
+    setIsDeletingPins(true);
+    setActionMessage('削除中...');
+    try {
+      const collectionName = `${roomId}_pins`;
+      const snap = await getDocs(
+        query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), where('type', '==', targetType)),
+      );
+      const docs = snap.docs;
+      const batchSize = 400;
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const slice = docs.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        slice.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      setSharedPins((prev) => prev.filter((p) => p.type !== targetType));
+      setSelectedPinId(null);
+      setActionMessage(`削除しました: ${docs.length} 件`);
+    } catch (err) {
+      console.error('Delete pins by type failed', err);
+      setActionMessage('削除に失敗しました');
+    } finally {
+      setTimeout(() => setActionMessage(''), 3000);
+      setIsDeletingPins(false);
+    }
+  };
+
   const updatePinNote = async (pinId, noteText) => {
+    const safeNote = typeof noteText === 'string' ? noteText : '';
+    if (safeNote.length > PIN_LIMITS.maxNoteLength) {
+      alert(`���e���� ${PIN_LIMITS.maxNoteLength} �����ɗ��ɂ��܂��B`);
+      return;
+    }
+    const now = Date.now();
+    if (now - rateLimitRef.current.noteUpdate < PIN_LIMITS.rate.noteUpdateMs) {
+      setActionMessage('���e�̕ύX�����ɕs����Ă�������B');
+      return;
+    }
+    rateLimitRef.current.noteUpdate = now;
     if (!user && activeMode === 'shared') return;
     if (!canSync || activeMode === 'local') {
-      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, note: noteText } : p)));
+      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, note: safeNote } : p)));
       return;
     }
     if (!roomId) return;
     const collectionName = `${roomId}_pins`;
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId), {
-        note: noteText,
+        note: safeNote,
       });
     } catch (err) {
       console.error(err);
@@ -1730,6 +1914,16 @@ export default function App() {
   };
 
   const updatePinImage = async (pinId, dataUrl) => {
+    if (dataUrl && estimateDataUrlBytes(dataUrl) > PIN_LIMITS.maxImageBytes) {
+      alert(`�摜�T�C�Y�����](${Math.floor(PIN_LIMITS.maxImageBytes / 1024)}KB)�̏ꍇ�͕s���Ă�������B`);
+      return;
+    }
+    const now = Date.now();
+    if (now - rateLimitRef.current.imageUpdate < PIN_LIMITS.rate.imageUpdateMs) {
+      setActionMessage('�摜�X�V�̑Ώۂ����܂��B�܂��̂ɓ߂��Ă��������B');
+      return;
+    }
+    rateLimitRef.current.imageUpdate = now;
     if (!user && activeMode === 'shared') return;
     if (!canSync || activeMode === 'local') {
       setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, imageUrl: dataUrl } : p)));
@@ -1748,10 +1942,12 @@ export default function App() {
   };
 
   const visiblePins = pins.filter((p) => {
+    if (roomId && p.roomId && p.roomId !== roomId) return false;
     if (p.mapId !== currentMap) return false;
     const pinProfile = p.profileId || 'default';
     if (pinProfile !== activeProfile) return false;
     const config = MAP_CONFIG[currentMap];
+    if (!config) return false;
     if (config.layers && p.layerId !== currentLayer) return false;
     if (!isMarkerVisible(p.type)) return false;
     return true;
@@ -1801,24 +1997,25 @@ export default function App() {
 
   const updateMapMeta = async (mapId, partial) => {
     const prev = mapMeta[mapId] || {};
-    const next = { ...prev, ...partial, updatedAt: Date.now(), updatedBy: user?.uid || 'local', updatedByName: displayName || 'ローカル' };
+    const baseNext = { ...prev, ...partial, updatedAt: Date.now(), updatedBy: user?.uid || 'local', updatedByName: displayName || 'ローカル' };
     if (activeMode === 'shared') {
       if (!canSync || !roomId || !user || !db) return;
       const collectionName = `${roomId}_mapmeta`;
+      const payload = { ...baseNext, roomId, expiresAt: ttlTimestamp(PIN_LIMITS.pinTtlMs) };
       try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next).catch(async (err) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), payload).catch(async (err) => {
           if (err.code === 'not-found' || String(err).includes('No document')) {
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), next);
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, mapId), payload);
           } else {
             throw err;
           }
         });
-        setSharedMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
+        setSharedMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: payload }));
       } catch (err) {
         console.error('Map meta update failed', err);
       }
     } else {
-      setLocalMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: next }));
+      setLocalMapMeta((prevMeta) => ({ ...prevMeta, [mapId]: baseNext }));
     }
   };
 
@@ -1826,6 +2023,10 @@ export default function App() {
     const trimmed = (name || '').trim();
     if (!trimmed) return;
     const list = Array.from(new Set([...profiles, trimmed]));
+    if (list.length > PIN_LIMITS.maxProfilesPerRoom) {
+      alert(`�v���t�B�[���A������ ${PIN_LIMITS.maxProfilesPerRoom} ���܂łł��B`);
+      return;
+    }
     setMapMetaForMode(currentMap, (prev) => {
       const meta = prev[currentMap] || {};
       return { ...prev, [currentMap]: { ...meta, profiles: list } };
@@ -1872,6 +2073,10 @@ export default function App() {
   };
 
   const copyProfile = async () => {
+    if (profiles.length >= PIN_LIMITS.maxProfilesPerRoom) {
+      alert(`�v���t�B�[���A������ ${PIN_LIMITS.maxProfilesPerRoom} ���܂łł��B`);
+      return;
+    }
     const base = activeProfile || 'default';
     let suffix = 1;
     let candidate = `${base}_copy`;
@@ -1889,6 +2094,8 @@ export default function App() {
         id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         profileId: candidate,
         createdAt: new Date(),
+        roomId: roomId || 'local',
+        expiresAt: new Date(Date.now() + PIN_LIMITS.pinTtlMs),
       }));
       setLocalPins((prev) => [...prev, ...copied]);
     } else {
@@ -1897,6 +2104,8 @@ export default function App() {
           ...p,
           id: undefined,
           createdAt: serverTimestamp(),
+          expiresAt: ttlTimestamp(PIN_LIMITS.pinTtlMs),
+          roomId,
           profileId: candidate,
           note: p.note || '',
         });
@@ -2222,6 +2431,23 @@ export default function App() {
                   開始する
                 </button>
               </div>
+
+              {activeMode === 'shared' && isOwner && roomId && (
+                <div className="mt-4 space-y-2 border-t border-gray-800 pt-3">
+                  <div className="text-xs text-gray-400">このルームのピンを一括削除</div>
+                  <button
+                    onClick={deleteAllRoomPins}
+                    disabled={isDeletingPins}
+                    className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500 shadow disabled:opacity-50"
+                  >
+                    {isDeletingPins ? '削除中...' : 'ピンをすべて削除'}
+                  </button>
+                  <div className="text-[11px] text-gray-500">
+                    オーナーだけが実行できます。削除は取り消せないのでご注意ください。
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         )}
@@ -2955,6 +3181,45 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {activeMode === 'shared' && isOwner && roomId && (
+              <div className="mt-4 space-y-2 border-t border-gray-800 pt-3">
+                <div className="text-xs text-gray-400">このルームのピンを一括削除</div>
+                <button
+                  onClick={deleteAllRoomPins}
+                  disabled={isDeletingPins}
+                  className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500 shadow disabled:opacity-50"
+                >
+                  {isDeletingPins ? '削除中...' : 'ピンをすべて削除'}
+                </button>
+                <div className="text-[11px] text-gray-500">
+                  オーナーだけが実行できます。削除は取り消せないのでご注意ください。
+                </div>
+                <div className="text-xs text-gray-400 pt-1">タイプを選んで削除</div>
+                <select
+                  value={deleteTargetType}
+                  onChange={(e) => setDeleteTargetType(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white"
+                >
+                  <option value="">タイプを選択</option>
+                  {Object.values(mergedMarkers).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={deletePinsByType}
+                  disabled={isDeletingPins || !deleteTargetType}
+                  className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-700 hover:bg-red-600 text-white border border-red-600 shadow disabled:opacity-50"
+                >
+                  {isDeletingPins ? '削除中...' : '選んだタイプのピンを削除'}
+                </button>
+                <div className="text-[11px] text-gray-500">
+                  選択したタイプのピンだけを削除します。確認のうえ実行してください。
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
