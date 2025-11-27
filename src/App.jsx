@@ -164,6 +164,8 @@ const appId =
     ? globalThis.__app_id
     : import.meta.env.VITE_APP_ID || 'default-app';
 
+const SAVED_ROOMS_KEY = 'tactical_saved_rooms';
+
 /* ========================================
   GAME DATA DEFINITIONS
   ========================================
@@ -1042,6 +1044,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isDeletingPins, setIsDeletingPins] = useState(false);
   const [deleteTargetType, setDeleteTargetType] = useState('');
+  const [savedRooms, setSavedRooms] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showShareToast, setShowShareToast] = useState(false);
@@ -1134,6 +1137,24 @@ export default function App() {
     return base;
   }, [customMarkers]);
 
+  const addRoomToHistory = useCallback(
+    (id) => {
+      if (!id) return;
+      setSavedRooms((prev) => {
+        const filtered = prev.filter((r) => r.id !== id);
+        return [{ id, savedAt: Date.now() }, ...filtered].slice(0, 30);
+      });
+    },
+    [setSavedRooms],
+  );
+
+  const removeRoomFromHistory = useCallback(
+    (id) => {
+      setSavedRooms((prev) => prev.filter((r) => r.id !== id));
+    },
+    [setSavedRooms],
+  );
+
   useEffect(() => {
     if (activeMode !== 'shared') {
       setApprovalMessage('');
@@ -1206,6 +1227,26 @@ export default function App() {
     const pinIds = new Set(pins.map((p) => p.id));
     setMarkedPinIds((prev) => prev.filter((id) => pinIds.has(id)));
   }, [pins, markedPinIds]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SAVED_ROOMS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setSavedRooms(parsed);
+      }
+    } catch (err) {
+      console.warn('Failed to load saved rooms', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVED_ROOMS_KEY, JSON.stringify(savedRooms));
+    } catch (err) {
+      console.warn('Failed to persist saved rooms', err);
+    }
+  }, [savedRooms]);
 
   useEffect(() => {
     const savedLibrary = localStorage.getItem('tactical_user_icon_library');
@@ -1885,6 +1926,46 @@ export default function App() {
     }
   };
 
+  const deleteCurrentRoomData = async () => {
+    if (!isOwner || !roomId || !db) {
+      alert('オーナーだけが実行できます。');
+      return;
+    }
+    if (!window.confirm('このルームをまるごと削除します。ピン/マップメタ/ルーム情報も消えます。よろしいですか？')) return;
+    setIsDeletingPins(true);
+    setActionMessage('ルーム削除中...');
+    try {
+      const pinsCol = `${roomId}_pins`;
+      const mapmetaCol = `${roomId}_mapmeta`;
+      const pinsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', pinsCol));
+      const metaSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', mapmetaCol));
+      const batchSize = 400;
+      const eraseDocs = async (docs) => {
+        for (let i = 0; i < docs.length; i += batchSize) {
+          const slice = docs.slice(i, i + batchSize);
+          const batch = writeBatch(db);
+          slice.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      };
+      await eraseDocs(pinsSnap.docs);
+      await eraseDocs(metaSnap.docs);
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId));
+      setSharedPins([]);
+      setSharedMapMeta({});
+      setRoomInfo(null);
+      removeRoomFromHistory(roomId);
+      applyRoomId(null);
+      setActionMessage('ルームを削除しました');
+    } catch (err) {
+      console.error('Delete room failed', err);
+      setActionMessage('ルーム削除に失敗しました');
+    } finally {
+      setTimeout(() => setActionMessage(''), 3000);
+      setIsDeletingPins(false);
+    }
+  };
+
   const updatePinNote = async (pinId, noteText) => {
     const safeNote = typeof noteText === 'string' ? noteText : '';
     if (safeNote.length > PIN_LIMITS.maxNoteLength) {
@@ -2164,6 +2245,7 @@ export default function App() {
     try {
       if (nextRoomId) {
         localStorage.setItem(LAST_SHARED_ROOM_KEY, nextRoomId);
+        addRoomToHistory(nextRoomId);
       }
     } catch {}
     setSelectedPinId(null);
@@ -2400,6 +2482,27 @@ export default function App() {
                 className="w-full bg-white border border-gray-400 rounded px-3 py-2.5 text-sm"
                 placeholder="ルームIDを入力"
               />
+              {savedRooms.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded p-3 space-y-2 max-h-48 overflow-y-auto">
+                  <div className="text-xs text-gray-600">保存したルーム一覧</div>
+                  {savedRooms.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 text-sm">
+                      <button
+                        onClick={() => setRoomInput(r.id)}
+                        className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
+                      >
+                        {r.id}
+                      </button>
+                      <button
+                        onClick={() => removeRoomFromHistory(r.id)}
+                        className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => setRoomInput(generateRoomId())}
@@ -2444,6 +2547,40 @@ export default function App() {
                   </button>
                   <div className="text-[11px] text-gray-500">
                     オーナーだけが実行できます。削除は取り消せないのでご注意ください。
+                  </div>
+                  <div className="text-xs text-gray-400 pt-1">タイプを選んで削除</div>
+                  <select
+                    value={deleteTargetType}
+                    onChange={(e) => setDeleteTargetType(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">タイプを選択</option>
+                    {Object.values(mergedMarkers).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={deletePinsByType}
+                    disabled={isDeletingPins || !deleteTargetType}
+                    className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-700 hover:bg-red-600 text-white border border-red-600 shadow disabled:opacity-50"
+                  >
+                    {isDeletingPins ? '削除中...' : '選んだタイプのピンを削除'}
+                  </button>
+                  <div className="text-[11px] text-gray-500">
+                    選択したタイプのピンだけを削除します。確認のうえ実行してください。
+                  </div>
+                  <div className="text-xs text-gray-400 pt-1">ルームまるごと削除</div>
+                  <button
+                    onClick={deleteCurrentRoomData}
+                    disabled={isDeletingPins}
+                    className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-800 hover:bg-red-700 text-white border border-red-700 shadow disabled:opacity-50"
+                  >
+                    {isDeletingPins ? '削除中...' : 'ルームとデータを削除'}
+                  </button>
+                  <div className="text-[11px] text-gray-500">
+                    ピン/マップメタ/ルーム情報を削除し、履歴からも外します。元に戻せません。
                   </div>
                 </div>
               )}
