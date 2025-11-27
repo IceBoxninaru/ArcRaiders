@@ -238,7 +238,7 @@ const PIN_LIMITS = {
   pinTtlMs: 1000 * 60 * 60 * 24 * 30, // 30 days
   roomTtlMs: 1000 * 60 * 60 * 24 * 90, // 90 days
   rate: {
-    pinAddMs: 800,
+    pinAddMs: 150, // more permissive to avoid誤検知
     noteUpdateMs: 400,
     imageUpdateMs: 1500,
   },
@@ -1779,7 +1779,7 @@ export default function App() {
     }
     const now = Date.now();
     if (now - rateLimitRef.current.pinAdd < PIN_LIMITS.rate.pinAddMs) {
-      setActionMessage('ピン作成の間隔が短すぎます。少し待ってください。');
+      setActionMessage('ピン作成が速すぎます。少しだけ間隔を空けてください。');
       return;
     }
 
