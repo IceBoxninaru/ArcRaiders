@@ -1138,6 +1138,14 @@ export default function App() {
     [firebaseBlocked, firebaseQuotaMessage],
   );
   const rateLimitRef = useRef({ pinAdd: 0, noteUpdate: 0, imageUpdate: 0 });
+  const lastRoomUpdateRef = useRef(0);
+  const pendingSentRef = useRef(false);
+
+  // Reset refs when room changes
+  useEffect(() => {
+    lastRoomUpdateRef.current = 0;
+    pendingSentRef.current = false;
+  }, [roomId]);
 
   const [openCategories, setOpenCategories] = useState({
     containers: true,
@@ -1453,15 +1461,23 @@ export default function App() {
             expiresAt: ttlTimestamp(PIN_LIMITS.roomTtlMs),
             lastActiveAt: serverTimestamp(),
           });
+          lastRoomUpdateRef.current = Date.now();
           return;
         }
         if (roomInfo.ownerUid === user.uid) {
+          // Only update if 5 minutes have passed since last update to prevent quota exhaustion
+          const now = Date.now();
+          const timeSinceLastUpdate = now - lastRoomUpdateRef.current;
+          const FIVE_MINUTES = 5 * 60 * 1000;
+          if (timeSinceLastUpdate < FIVE_MINUTES) return;
+
           const patch = { allowedUsers: roomInfo.allowedUsers?.includes(user.uid) ? roomInfo.allowedUsers : arrayUnion(user.uid) };
           await updateDoc(roomDocRef, {
             ...patch,
             lastActiveAt: serverTimestamp(),
             expiresAt: ttlTimestamp(PIN_LIMITS.roomTtlMs),
           });
+          lastRoomUpdateRef.current = now;
         }
       } catch (err) {
         const handled = handleFirestoreError(err, 'Ensure room failed');
@@ -1482,7 +1498,15 @@ export default function App() {
       const alreadyAllowed = roomInfo.allowedUsers?.includes(user.uid);
       const pendingArr = roomInfo.pending || [];
       const alreadyPending = pendingArr.some((p) => (typeof p === 'string' ? p === user.uid : p?.uid === user.uid));
-      if (!alreadyAllowed && !alreadyPending) {
+
+      // Reset pendingSentRef when user becomes allowed
+      if (alreadyAllowed) {
+        pendingSentRef.current = false;
+        return;
+      }
+
+      // Prevent duplicate pending requests
+      if (!alreadyAllowed && !alreadyPending && !pendingSentRef.current) {
         try {
           await updateDoc(roomDocRef, {
             pending: arrayUnion({
@@ -1490,6 +1514,7 @@ export default function App() {
               name: displayName || 'guest',
             }),
           });
+          pendingSentRef.current = true;
         } catch (err) {
           const handled = handleFirestoreError(err, 'Add pending failed');
           if (handled) return;
