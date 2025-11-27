@@ -2682,8 +2682,10 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative touch-none">
       {actionMessage && (
-        <div className="absolute top-14 left-2 z-50 bg-blue-900/80 text-xs px-3 py-2 rounded shadow">
-          {actionMessage}
+        <div className="fixed top-4 inset-x-0 z-[200] flex justify-center pointer-events-none">
+          <div className="bg-blue-900/90 border border-blue-700 text-xs px-4 py-2 rounded shadow-lg">
+            {actionMessage}
+          </div>
         </div>
       )}
       
