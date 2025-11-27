@@ -19,33 +19,9 @@ service cloud.firestore {
         && (room.data.ownerUid == request.auth.uid || room.data.allowedUsers.hasAny([request.auth.uid]));
     }
 
-    function requestedRoomId() {
-      return request.resource.data.roomId != null
-        ? request.resource.data.roomId
-        : (resource.data.roomId != null ? resource.data.roomId : null);
-    }
-
-    function collectionMatchesRoom(roomId, collectionId) {
-      return roomId != null && collectionId.matches('^' + roomId + '_(pins|mapmeta)$');
-    }
-
-    match /artifacts/{appId}/public/data/rooms/{roomId} {
-      allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if isRoomOwner(roomDoc(appId, roomId));
-    }
-
-    // Pins/mapmeta collections are named {roomId}_pins / {roomId}_mapmeta and each document
-    // must include roomId to tie back to the parent room. Pending/join flows should be routed
-    // through Cloud Functions so only owners/allowed users can mutate access control.
-    match /artifacts/{appId}/public/data/{collectionId}/{docId} {
-      allow read: if isSignedIn()
-        && collectionMatchesRoom(requestedRoomId(), collectionId)
-        && isRoomMember(roomDoc(appId, requestedRoomId()));
-
-      allow create, update, delete: if isSignedIn()
-        && collectionMatchesRoom(requestedRoomId(), collectionId)
-        && isRoomMember(roomDoc(appId, requestedRoomId()));
+    // シンプルに、認証済みなら artifacts/{appId}/public/data 配下は全て許可（appId は環境と合わせてください）
+    match /artifacts/{appId}/public/data/{doc=**} {
+      allow read, write: if isSignedIn();
     }
   }
 }
