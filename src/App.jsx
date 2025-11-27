@@ -165,6 +165,7 @@ const appId =
     : import.meta.env.VITE_APP_ID || 'default-app';
 
 const SAVED_ROOMS_KEY = 'tactical_saved_rooms';
+const MAX_OWNER_ROOMS = 5;
 
 /* ========================================
   GAME DATA DEFINITIONS
@@ -1138,11 +1139,21 @@ export default function App() {
   }, [customMarkers]);
 
   const addRoomToHistory = useCallback(
-    (id) => {
+    (id, role = 'member') => {
       if (!id) return;
       setSavedRooms((prev) => {
+        const existing = prev.find((r) => r.id === id);
+        const nextRole = existing
+          ? existing.role === 'owner' || role === 'owner'
+            ? 'owner'
+            : existing.role
+          : role;
+        if (!existing && nextRole === 'owner') {
+          const ownerCount = prev.filter((r) => r.role === 'owner').length;
+          if (ownerCount >= MAX_OWNER_ROOMS) return prev;
+        }
         const filtered = prev.filter((r) => r.id !== id);
-        return [{ id, savedAt: Date.now() }, ...filtered].slice(0, 30);
+        return [{ id, role: nextRole, savedAt: Date.now() }, ...filtered].slice(0, 30);
       });
     },
     [setSavedRooms],
@@ -1233,7 +1244,20 @@ export default function App() {
       const raw = localStorage.getItem(SAVED_ROOMS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setSavedRooms(parsed);
+        if (Array.isArray(parsed)) {
+          const normalized = parsed
+            .map((r) => {
+              if (!r) return null;
+              if (typeof r === 'string') return { id: r, role: 'member', savedAt: Date.now() };
+              return {
+                id: r.id,
+                role: r.role === 'owner' ? 'owner' : 'member',
+                savedAt: r.savedAt || Date.now(),
+              };
+            })
+            .filter((r) => r && r.id);
+          setSavedRooms(normalized);
+        }
       }
     } catch (err) {
       console.warn('Failed to load saved rooms', err);
@@ -1742,20 +1766,20 @@ export default function App() {
 
     const mapDef = MAP_CONFIG[currentMap];
     if (!mapDef) {
-      setActionMessage('�}�b�v�ݒ�ɏ������܂��B');
+      setActionMessage('マップ設定に問題があります。');
       return;
     }
     if (!isLayerValidForMap(mapDef, currentLayer)) {
-      setActionMessage('���C���[�ݒ�ɏ������܂��B');
+      setActionMessage('レイヤー設定に問題があります。');
       return;
     }
     if (!mergedMarkers[selectedTool]) {
-      setActionMessage('���킹���Ă����킹�����g�ł��B');
+      setActionMessage('このマーカーは使用できません。');
       return;
     }
     const now = Date.now();
     if (now - rateLimitRef.current.pinAdd < PIN_LIMITS.rate.pinAddMs) {
-      setActionMessage('�s���쐬�̑Ώۂ����܂��B�ʂ̃X�g�b�v���Ă�������B');
+      setActionMessage('ピン作成の間隔が短すぎます。少し待ってください。');
       return;
     }
 
@@ -1764,12 +1788,12 @@ export default function App() {
     const y = (e.clientY - rect.top) / transform.scale;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (x < 0 || y < 0 || x > mapDef.width || y > mapDef.height) {
-      setActionMessage('�W�v��}�b�v�O�̃o�C�g�A�E�g�ł��B');
+      setActionMessage('座標がマップ外です。');
       return;
     }
     const currentPinCount = pins.length;
     if (currentPinCount >= PIN_LIMITS.maxPinsPerRoom) {
-      setActionMessage(`�s���������܂����B�ő� ${PIN_LIMITS.maxPinsPerRoom} �܂ł��ł��B`);
+      setActionMessage(`ピン数の上限です。最大 ${PIN_LIMITS.maxPinsPerRoom} 件までです。`);
       return;
     }
     rateLimitRef.current.pinAdd = now;
@@ -1851,16 +1875,16 @@ export default function App() {
 
   const deleteAllRoomPins = async () => {
     if (!isOwner || !roomId || !db) {
-      alert('���[�i�[�̂݌��\�ł��܂��B');
+      alert('オーナーだけが実行できます。');
       return;
     }
     if (activeMode !== 'shared') {
-      alert('���L�u���[�h�݂̂ł��܂��B');
+      alert('共有モードのときのみ実行できます。');
       return;
     }
-    if (!window.confirm('���̃���[���̃s���S�ď폜���܂��B���B�����Ă��������B')) return;
+    if (!window.confirm('このルームのピンをすべて削除します。よろしいですか？')) return;
     setIsDeletingPins(true);
-    setActionMessage('�폜���s��...');
+    setActionMessage('削除中...');
     try {
       const collectionName = `${roomId}_pins`;
       const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
@@ -1874,10 +1898,10 @@ export default function App() {
       }
       setSharedPins([]);
       setSelectedPinId(null);
-      setActionMessage(`�폜���܂���: ${docs.length} �_�C�\�b�v`);
+      setActionMessage(`削除しました: ${docs.length} 件`);
     } catch (err) {
       console.error('Delete all pins failed', err);
-      setActionMessage('�폜�Ɏ��s���܂���');
+      setActionMessage('削除に失敗しました');
     } finally {
       setTimeout(() => setActionMessage(''), 3000);
       setIsDeletingPins(false);
@@ -1969,12 +1993,12 @@ export default function App() {
   const updatePinNote = async (pinId, noteText) => {
     const safeNote = typeof noteText === 'string' ? noteText : '';
     if (safeNote.length > PIN_LIMITS.maxNoteLength) {
-      alert(`���e���� ${PIN_LIMITS.maxNoteLength} �����ɗ��ɂ��܂��B`);
+      alert(`ノートは ${PIN_LIMITS.maxNoteLength} 文字までにしてください。`);
       return;
     }
     const now = Date.now();
     if (now - rateLimitRef.current.noteUpdate < PIN_LIMITS.rate.noteUpdateMs) {
-      setActionMessage('���e�̕ύX�����ɕs����Ă�������B');
+      setActionMessage('ノート変更の間隔が短すぎます。');
       return;
     }
     rateLimitRef.current.noteUpdate = now;
@@ -1996,12 +2020,12 @@ export default function App() {
 
   const updatePinImage = async (pinId, dataUrl) => {
     if (dataUrl && estimateDataUrlBytes(dataUrl) > PIN_LIMITS.maxImageBytes) {
-      alert(`�摜�T�C�Y�����](${Math.floor(PIN_LIMITS.maxImageBytes / 1024)}KB)�̏ꍇ�͕s���Ă�������B`);
+      alert(`画像サイズの上限(${Math.floor(PIN_LIMITS.maxImageBytes / 1024)}KB)を超えています。`);
       return;
     }
     const now = Date.now();
     if (now - rateLimitRef.current.imageUpdate < PIN_LIMITS.rate.imageUpdateMs) {
-      setActionMessage('�摜�X�V�̑Ώۂ����܂��B�܂��̂ɓ߂��Ă��������B');
+      setActionMessage('画像更新の間隔が短すぎます。少し待ってください。');
       return;
     }
     rateLimitRef.current.imageUpdate = now;
@@ -2105,7 +2129,7 @@ export default function App() {
     if (!trimmed) return;
     const list = Array.from(new Set([...profiles, trimmed]));
     if (list.length > PIN_LIMITS.maxProfilesPerRoom) {
-      alert(`�v���t�B�[���A������ ${PIN_LIMITS.maxProfilesPerRoom} ���܂łł��B`);
+      alert(`プロフィールは最大 ${PIN_LIMITS.maxProfilesPerRoom} 件までです。`);
       return;
     }
     setMapMetaForMode(currentMap, (prev) => {
@@ -2155,7 +2179,7 @@ export default function App() {
 
   const copyProfile = async () => {
     if (profiles.length >= PIN_LIMITS.maxProfilesPerRoom) {
-      alert(`�v���t�B�[���A������ ${PIN_LIMITS.maxProfilesPerRoom} ���܂łł��B`);
+      alert(`プロフィールは最大 ${PIN_LIMITS.maxProfilesPerRoom} 件までです。`);
       return;
     }
     const base = activeProfile || 'default';
@@ -2245,7 +2269,7 @@ export default function App() {
     try {
       if (nextRoomId) {
         localStorage.setItem(LAST_SHARED_ROOM_KEY, nextRoomId);
-        addRoomToHistory(nextRoomId);
+        addRoomToHistory(nextRoomId, creator ? 'owner' : 'member');
       }
     } catch {}
     setSelectedPinId(null);
@@ -2266,6 +2290,11 @@ export default function App() {
   const copyRoomLink = () => {
     const activeRoomId = roomId || generateRoomId();
     if (!roomId) {
+      const ownerRoomsCount = savedRooms.filter((r) => r.role === 'owner').length;
+      if (ownerRoomsCount >= MAX_OWNER_ROOMS) {
+        alert(`オーナーとして保持できるルームは最大 ${MAX_OWNER_ROOMS} 件です。不要なルームを削除してください。`);
+        return;
+      }
       applyRoomId(activeRoomId, { creator: true });
     }
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoomId}`;
@@ -2404,6 +2433,12 @@ export default function App() {
 
   const handleConfirmShared = () => {
     const target = roomInput.trim() || generateRoomId();
+    const ownerRoomsCount = savedRooms.filter((r) => r.role === 'owner').length;
+    const isExistingOwner = savedRooms.some((r) => r.id === target && r.role === 'owner');
+    if (!isExistingOwner && ownerRoomsCount >= MAX_OWNER_ROOMS) {
+      setModeError(`オーナーとして保持できるルームは最大 ${MAX_OWNER_ROOMS} 件です。不要なルームを削除してください。`);
+      return;
+    }
     applyRoomId(target, { creator: true });
     setRoomCreator(true);
     setModeChosen(true);
@@ -2485,22 +2520,48 @@ export default function App() {
               {savedRooms.length > 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded p-3 space-y-2 max-h-48 overflow-y-auto">
                   <div className="text-xs text-gray-600">保存したルーム一覧</div>
-                  {savedRooms.map((r) => (
-                    <div key={r.id} className="flex items-center gap-2 text-sm">
-                      <button
-                        onClick={() => setRoomInput(r.id)}
-                        className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
-                      >
-                        {r.id}
-                      </button>
-                      <button
-                        onClick={() => removeRoomFromHistory(r.id)}
-                        className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
-                      >
-                        削除
-                      </button>
+                  {savedRooms
+                    .filter((r) => r.role === 'owner')
+                    .map((r) => (
+                      <div key={r.id} className="flex items-center gap-2 text-sm">
+                        <span className="text-[11px] text-orange-600">owner</span>
+                        <button
+                          onClick={() => setRoomInput(r.id)}
+                          className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
+                        >
+                          {r.id}
+                        </button>
+                        <button
+                          onClick={() => removeRoomFromHistory(r.id)}
+                          className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                        >
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  {savedRooms.filter((r) => r.role !== 'owner').length > 0 && (
+                    <div className="border-t border-gray-200 pt-2 space-y-1">
+                      {savedRooms
+                        .filter((r) => r.role !== 'owner')
+                        .map((r) => (
+                          <div key={r.id} className="flex items-center gap-2 text-sm">
+                            <span className="text-[11px] text-gray-500">member</span>
+                            <button
+                              onClick={() => setRoomInput(r.id)}
+                              className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
+                            >
+                              {r.id}
+                            </button>
+                            <button
+                              onClick={() => removeRoomFromHistory(r.id)}
+                              className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
               <div className="flex flex-col sm:flex-row gap-2">
