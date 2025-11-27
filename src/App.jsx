@@ -2013,19 +2013,33 @@ export default function App() {
       return;
     }
     rateLimitRef.current.noteUpdate = now;
-    if (!user && activeMode === 'shared') return;
-    if (!canSync || activeMode === 'local') {
-      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, note: safeNote } : p)));
+    if (!user && activeMode === 'shared') {
+      setActionMessage('保存に失敗');
+      setTimeout(() => setActionMessage(''), 2000);
       return;
     }
-    if (!roomId) return;
+    if (!canSync || activeMode === 'local') {
+      setPinsForMode((prev) => prev.map((p) => (p.id === pinId ? { ...p, note: safeNote } : p)));
+      setActionMessage('保存完了');
+      setTimeout(() => setActionMessage(''), 2000);
+      return;
+    }
+    if (!roomId) {
+      setActionMessage('保存に失敗');
+      setTimeout(() => setActionMessage(''), 2000);
+      return;
+    }
     const collectionName = `${roomId}_pins`;
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionName, pinId), {
         note: safeNote,
       });
+      setActionMessage('保存完了');
     } catch (err) {
       console.error(err);
+      setActionMessage('保存に失敗');
+    } finally {
+      setTimeout(() => setActionMessage(''), 2000);
     }
   };
 
