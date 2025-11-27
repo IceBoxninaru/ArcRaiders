@@ -162,7 +162,7 @@ const useFirebase = firebaseReady;
 const appId =
   typeof globalThis !== 'undefined' && typeof globalThis.__app_id !== 'undefined'
     ? globalThis.__app_id
-    : import.meta.env.VITE_APP_ID || 'default-app';
+    : import.meta.env.VITE_APP_ID || 'arcraidersmap';
 
 const SAVED_ROOMS_KEY = 'tactical_saved_rooms';
 const MAX_OWNER_ROOMS = 5;
@@ -1239,6 +1239,11 @@ export default function App() {
     setMarkedPinIds((prev) => prev.filter((id) => pinIds.has(id)));
   }, [pins, markedPinIds]);
 
+  // reset pin rate limit when部屋を切り替え
+  useEffect(() => {
+    rateLimitRef.current.pinAdd = 0;
+  }, [roomId]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SAVED_ROOMS_KEY);
@@ -1426,6 +1431,7 @@ export default function App() {
         }
       } catch (err) {
         console.error('Ensure room failed', err);
+        setActionMessage('権限エラー: Firestore ルールと appId を確認してください。');
       }
     };
     ensureRoom();
@@ -1450,6 +1456,7 @@ export default function App() {
           });
         } catch (err) {
           console.error('Add pending failed', err);
+          setActionMessage('権限エラー: オーナーに許可を依頼できません。');
         }
       }
     };
@@ -1778,7 +1785,9 @@ export default function App() {
       return;
     }
     const now = Date.now();
-    if (now - rateLimitRef.current.pinAdd < PIN_LIMITS.rate.pinAddMs) {
+    const lastPin = rateLimitRef.current.pinAdd || 0;
+    const safeLastPin = lastPin > now ? 0 : lastPin; // 時計ずれや異常値をリセット
+    if (now - safeLastPin < PIN_LIMITS.rate.pinAddMs) {
       setActionMessage('ピン作成が速すぎます。少しだけ間隔を空けてください。');
       return;
     }
@@ -1796,7 +1805,6 @@ export default function App() {
       setActionMessage(`ピン数の上限です。最大 ${PIN_LIMITS.maxPinsPerRoom} 件までです。`);
       return;
     }
-    rateLimitRef.current.pinAdd = now;
 
     if (!canSync || activeMode === 'local') {
       const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1821,6 +1829,7 @@ export default function App() {
       ]);
       setSelectedPinId(localId);
       setSelectedTool('move');
+      rateLimitRef.current.pinAdd = now;
       return;
     }
 
@@ -1845,8 +1854,10 @@ export default function App() {
       });
       setSelectedPinId(docRef.id);
       setSelectedTool('move');
+      rateLimitRef.current.pinAdd = now;
     } catch (err) {
       console.error('Error adding pin:', err);
+      setActionMessage('権限エラー: ピン作成が拒否されました。FirestoreルールとappIdを確認してください。');
     }
   };
 
