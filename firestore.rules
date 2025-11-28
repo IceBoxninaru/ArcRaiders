@@ -19,7 +19,18 @@ service cloud.firestore {
         && (room.data.ownerUid == request.auth.uid || room.data.allowedUsers.hasAny([request.auth.uid]));
     }
 
-    // シンプルに、認証済みなら artifacts/{appId}/public/data 配下は全て許可（appId は環境と合わせてください）
+    // ルームドキュメントのルール
+    match /artifacts/{appId}/public/data/rooms/{roomId} {
+      allow read: if isSignedIn();
+      // 新規作成：ドキュメントが存在しない場合のみ許可
+      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId));
+      // 更新：オーナーのみ許可
+      allow update: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      // 削除：オーナーのみ許可
+      allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // その他のデータ（ピン、マップメタなど）
     match /artifacts/{appId}/public/data/{doc=**} {
       allow read, write: if isSignedIn();
     }

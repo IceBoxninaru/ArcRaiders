@@ -584,6 +584,13 @@ const MobileSidebar = ({
   onClose,
   searchTerm,
   setSearchTerm,
+  categoryFilter,
+  setCategoryFilter,
+  sortBy,
+  setSortBy,
+  visiblePins,
+  pins,
+  currentMap,
   openCategories,
   toggleCategory,
   mergedMarkers,
@@ -644,8 +651,75 @@ const MobileSidebar = ({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-black/40 border border-gray-700 rounded pl-8 pr-2 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-orange-500"
               />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                  title="クリア"
+                >
+                  ×
+                </button>
+              )}
             </div>
-            
+
+            {/* Filter & Sort Controls */}
+            <div className="space-y-2 pb-2 border-b border-gray-700">
+              {/* Sort */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-400 whitespace-nowrap">並び順:</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
+                >
+                  <option value="newest">新しい順</option>
+                  <option value="oldest">古い順</option>
+                  <option value="name">名前順</option>
+                </select>
+              </div>
+
+              {/* Category Filter */}
+              <div>
+                <div className="text-xs text-gray-400 mb-1">カテゴリ:</div>
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(MARKER_CATEGORIES).map(([catKey, catData]) => {
+                    const isSelected = categoryFilter.includes(catKey);
+                    return (
+                      <button
+                        key={catKey}
+                        onClick={() => {
+                          setCategoryFilter((prev) =>
+                            isSelected ? prev.filter((c) => c !== catKey) : [...prev, catKey]
+                          );
+                        }}
+                        className={`px-2 py-1 rounded text-xs border transition-colors ${
+                          isSelected
+                            ? 'border-orange-500 bg-orange-500/20 text-orange-300'
+                            : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500'
+                        }`}
+                        style={isSelected ? { borderColor: catData.color, color: catData.color } : {}}
+                      >
+                        {catData.label}
+                      </button>
+                    );
+                  })}
+                  {categoryFilter.length > 0 && (
+                    <button
+                      onClick={() => setCategoryFilter([])}
+                      className="px-2 py-1 rounded text-xs border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Result Count */}
+              <div className="text-xs text-gray-400">
+                {visiblePins.length} / {pins.filter((p) => p.mapId === currentMap).length} 件表示中
+              </div>
+            </div>
+
             {/* Room ID Section */}
             <div className="flex items-center gap-2">
               <div className="w-16 bg-gray-900 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1 flex items-center justify-center font-bold">
@@ -1155,6 +1229,8 @@ export default function App() {
     events: true,
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState([]); // 選択されたカテゴリ
+  const [sortBy, setSortBy] = useState('newest'); // 'newest', 'oldest', 'name'
   const customPinIcon = markerIcons['custom_pin'] || null;
   const mergedCategories = useMemo(() => {
     const cats = { ...MARKER_CATEGORIES };
@@ -2151,17 +2227,68 @@ export default function App() {
     }
   };
 
-  const visiblePins = pins.filter((p) => {
-    if (activeMode === 'shared' && roomId && p.roomId && p.roomId !== roomId) return false;
-    if (p.mapId !== currentMap) return false;
-    const pinProfile = p.profileId || 'default';
-    if (pinProfile !== activeProfile) return false;
-    const config = MAP_CONFIG[currentMap];
-    if (!config) return false;
-    if (config.layers && p.layerId !== currentLayer) return false;
-    if (!isMarkerVisible(p.type)) return false;
-    return true;
-  });
+  const visiblePins = useMemo(() => {
+    let filtered = pins.filter((p) => {
+      if (activeMode === 'shared' && roomId && p.roomId && p.roomId !== roomId) return false;
+      if (p.mapId !== currentMap) return false;
+      const pinProfile = p.profileId || 'default';
+      if (pinProfile !== activeProfile) return false;
+      const config = MAP_CONFIG[currentMap];
+      if (!config) return false;
+      if (config.layers && p.layerId !== currentLayer) return false;
+      if (!isMarkerVisible(p.type)) return false;
+
+      // 検索フィルタ
+      if (searchTerm.trim()) {
+        const query = searchTerm.toLowerCase();
+        const marker = mergedMarkers[p.type];
+        const markerLabel = marker?.label || '';
+        const note = p.note || '';
+
+        // マーカー名またはノートに検索語が含まれているかチェック
+        const matchesSearch =
+          markerLabel.toLowerCase().includes(query) ||
+          note.toLowerCase().includes(query);
+
+        if (!matchesSearch) return false;
+      }
+
+      // カテゴリフィルタ
+      if (categoryFilter.length > 0) {
+        const marker = mergedMarkers[p.type];
+        const markerCategory = marker?.cat || 'others';
+        if (!categoryFilter.includes(markerCategory)) return false;
+      }
+
+      return true;
+    });
+
+    // ソート
+    if (sortBy === 'newest') {
+      filtered = filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    } else if (sortBy === 'oldest') {
+      filtered = filtered.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    } else if (sortBy === 'name') {
+      filtered = filtered.sort((a, b) => {
+        const aLabel = mergedMarkers[a.type]?.label || '';
+        const bLabel = mergedMarkers[b.type]?.label || '';
+        return aLabel.localeCompare(bLabel, 'ja');
+      });
+    }
+
+    return filtered;
+  }, [
+    pins,
+    activeMode,
+    roomId,
+    currentMap,
+    activeProfile,
+    currentLayer,
+    searchTerm,
+    categoryFilter,
+    sortBy,
+    mergedMarkers,
+  ]);
 
   const toggleCategory = (catKey) => {
     setOpenCategories((prev) => ({ ...prev, [catKey]: !prev[catKey] }));
@@ -3217,6 +3344,13 @@ export default function App() {
           onClose={() => setSidebarOpen(false)}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          visiblePins={visiblePins}
+          pins={pins}
+          currentMap={currentMap}
           openCategories={openCategories}
           toggleCategory={toggleCategory}
           mergedMarkers={mergedMarkers}
