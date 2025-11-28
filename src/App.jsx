@@ -1986,6 +1986,7 @@ export default function App() {
           iconUrl: markerIcons[selectedTool] || undefined,
           profileId: activeProfile,
           note: '',
+          timestamp: Date.now(), // ソート用にタイムスタンプを追加
           createdAt: new Date(),
           expiresAt: new Date(Date.now() + PIN_LIMITS.pinTtlMs),
           createdBy: user?.uid || 'local',
@@ -2345,12 +2346,13 @@ export default function App() {
     const index = new Supercluster({
       radius: 60, // クラスタの半径（ピクセル）
       maxZoom: 16, // 最大ズームレベル
+      minZoom: 0, // 最小ズームレベル
     });
 
     index.load(points);
 
     // 現在のズームレベルと表示範囲を計算
-    const zoom = Math.log2(transform.scale);
+    const zoom = Math.max(0, Math.min(16, Math.log2(transform.scale) + 8)); // スケールを適切なズームレベルに変換
     const config = MAP_CONFIG[currentMap];
     const bounds = [
       -transform.x / transform.scale,
