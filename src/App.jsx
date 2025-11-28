@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import html2canvas from 'html2canvas';
+import Supercluster from 'supercluster';
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -588,6 +589,8 @@ const MobileSidebar = ({
   setCategoryFilter,
   sortBy,
   setSortBy,
+  clusteringEnabled,
+  setClusteringEnabled,
   visiblePins,
   pins,
   currentMap,
@@ -712,6 +715,21 @@ const MobileSidebar = ({
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Clustering Toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">クラスタリング:</span>
+                <button
+                  onClick={() => setClusteringEnabled(!clusteringEnabled)}
+                  className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${
+                    clusteringEnabled
+                      ? 'bg-orange-500 text-white border-orange-600'
+                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500'
+                  }`}
+                >
+                  {clusteringEnabled ? 'ON' : 'OFF'}
+                </button>
               </div>
 
               {/* Result Count */}
@@ -1231,6 +1249,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState([]); // 選択されたカテゴリ
   const [sortBy, setSortBy] = useState('newest'); // 'newest', 'oldest', 'name'
+  const [clusteringEnabled, setClusteringEnabled] = useState(true); // クラスタリング有効/無効
   const customPinIcon = markerIcons['custom_pin'] || null;
   const mergedCategories = useMemo(() => {
     const cats = { ...MARKER_CATEGORIES };
@@ -2290,6 +2309,60 @@ export default function App() {
     mergedMarkers,
   ]);
 
+  // クラスタリング処理
+  const clusters = useMemo(() => {
+    if (!clusteringEnabled || visiblePins.length === 0) {
+      // クラスタリング無効時は各ピンを個別のクラスタとして扱う
+      return visiblePins.map((pin) => ({
+        type: 'Feature',
+        properties: {
+          cluster: false,
+          pinId: pin.id,
+          pin: pin,
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [pin.x, pin.y],
+        },
+      }));
+    }
+
+    // GeoJSON形式に変換
+    const points = visiblePins.map((pin) => ({
+      type: 'Feature',
+      properties: {
+        cluster: false,
+        pinId: pin.id,
+        pin: pin,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [pin.x, pin.y],
+      },
+    }));
+
+    // Superclusterインスタンスを作成
+    const index = new Supercluster({
+      radius: 60, // クラスタの半径（ピクセル）
+      maxZoom: 16, // 最大ズームレベル
+    });
+
+    index.load(points);
+
+    // 現在のズームレベルと表示範囲を計算
+    const zoom = Math.log2(transform.scale);
+    const config = MAP_CONFIG[currentMap];
+    const bounds = [
+      -transform.x / transform.scale,
+      -transform.y / transform.scale,
+      (-transform.x + windowWidth) / transform.scale,
+      (-transform.y + windowHeight) / transform.scale,
+    ];
+
+    // クラスタを取得
+    return index.getClusters(bounds, Math.floor(zoom));
+  }, [visiblePins, clusteringEnabled, transform, currentMap, windowWidth, windowHeight]);
+
   const toggleCategory = (catKey) => {
     setOpenCategories((prev) => ({ ...prev, [catKey]: !prev[catKey] }));
   };
@@ -3348,6 +3421,8 @@ export default function App() {
           setCategoryFilter={setCategoryFilter}
           sortBy={sortBy}
           setSortBy={setSortBy}
+          clusteringEnabled={clusteringEnabled}
+          setClusteringEnabled={setClusteringEnabled}
           visiblePins={visiblePins}
           pins={pins}
           currentMap={currentMap}
@@ -3434,7 +3509,49 @@ export default function App() {
               <TacticalGrid config={config} onUpload={triggerFileUpload} />
             )}
 
-            {visiblePins.map((pin) => {
+            {clusters.map((cluster, idx) => {
+              const [lng, lat] = cluster.geometry.coordinates;
+              const { cluster: isCluster, point_count: pointCount } = cluster.properties;
+
+              // クラスタの場合
+              if (isCluster) {
+                const size = Math.min(60, 30 + Math.sqrt(pointCount) * 3);
+                return (
+                  <div
+                    key={`cluster-${cluster.id || idx}`}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-200 hover:scale-110"
+                    style={{
+                      left: lng,
+                      top: lat,
+                      zIndex: 5,
+                    }}
+                    onClick={() => {
+                      // ズームインしてクラスタを展開
+                      const newScale = transform.scale * 2;
+                      setTransform({
+                        ...transform,
+                        x: transform.x - (lng - windowWidth / 2),
+                        y: transform.y - (lat - windowHeight / 2),
+                        scale: newScale,
+                      });
+                    }}
+                  >
+                    <div
+                      className="flex items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-red-600 text-white font-bold shadow-lg border-2 border-white"
+                      style={{
+                        width: size,
+                        height: size,
+                        fontSize: pointCount >= 100 ? '12px' : '14px',
+                      }}
+                    >
+                      {pointCount}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 個別ピンの場合
+              const pin = cluster.properties.pin;
               const markerDef = mergedMarkers[pin.type] || FALLBACK_MARKER;
               const category = MARKER_CATEGORIES[markerDef.cat] || MARKER_CATEGORIES.others;
               const PinIcon = markerDef.icon;
