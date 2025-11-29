@@ -8,7 +8,10 @@
       "Bash(npm install:*)",
       "Bash(npm ci:*)",
       "Bash(npm cache clean:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run deploy:*)"
     ],
     "deny": [],
     "ask": []

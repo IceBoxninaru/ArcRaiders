@@ -2312,8 +2312,16 @@ export default function App() {
 
   // クラスタリング処理
   const clusters = useMemo(() => {
+    const config = MAP_CONFIG[currentMap];
+    if (!config) return [];
+
+    const clamp = clampToRange;
+    const toLng = (xPx) => ((clamp(xPx, 0, config.width) / config.width) * 360) - 180;
+    const toLat = (yPx) => 90 - ((clamp(yPx, 0, config.height) / config.height) * 180);
+    const toPx = (lng) => ((lng + 180) / 360) * config.width;
+    const toPy = (lat) => ((90 - lat) / 180) * config.height;
+
     if (!clusteringEnabled || visiblePins.length === 0) {
-      // クラスタリング無効時は各ピンを個別のクラスタとして扱う
       return visiblePins.map((pin) => ({
         type: 'Feature',
         properties: {
@@ -2328,42 +2336,53 @@ export default function App() {
       }));
     }
 
-    // GeoJSON形式に変換
     const points = visiblePins.map((pin) => ({
       type: 'Feature',
       properties: {
         cluster: false,
         pinId: pin.id,
-        pin: pin,
+        pin: { ...pin, x: clamp(pin.x, 0, config.width), y: clamp(pin.y, 0, config.height) },
       },
       geometry: {
         type: 'Point',
-        coordinates: [pin.x, pin.y],
+        coordinates: [toLng(pin.x), toLat(pin.y)],
       },
     }));
 
-    // Superclusterインスタンスを作成
     const index = new Supercluster({
-      radius: 60, // クラスタの半径（ピクセル）
-      maxZoom: 16, // 最大ズームレベル
-      minZoom: 0, // 最小ズームレベル
+      radius: 60,
+      maxZoom: 16,
+      minZoom: 0,
     });
 
     index.load(points);
 
-    // 現在のズームレベルと表示範囲を計算
-    const zoom = Math.max(0, Math.min(16, Math.log2(transform.scale) + 8)); // スケールを適切なズームレベルに変換
-    const config = MAP_CONFIG[currentMap];
-    const bounds = [
-      -transform.x / transform.scale,
-      -transform.y / transform.scale,
-      (-transform.x + windowWidth) / transform.scale,
-      (-transform.y + windowHeight) / transform.scale,
-    ];
+    const zoom = Math.max(0, Math.min(16, Math.log2(transform.scale) + 8));
+    const minX = clamp(-transform.x / transform.scale, 0, config.width);
+    const minY = clamp(-transform.y / transform.scale, 0, config.height);
+    const maxX = clamp((-transform.x + windowWidth) / transform.scale, 0, config.width);
+    const maxY = clamp((-transform.y + windowHeight) / transform.scale, 0, config.height);
 
-    // クラスタを取得
-    return index.getClusters(bounds, Math.floor(zoom));
+    const west = clamp(toLng(minX), -180, 180);
+    const east = clamp(toLng(maxX), -180, 180);
+    const latTop = toLat(minY);
+    const latBottom = toLat(maxY);
+    const south = clamp(Math.min(latTop, latBottom), -90, 90);
+    const north = clamp(Math.max(latTop, latBottom), -90, 90);
+    const bounds = [west, south, east, north];
+
+    return index.getClusters(bounds, Math.floor(zoom)).map((cluster) => {
+      const [lng, lat] = cluster.geometry.coordinates;
+      return {
+        ...cluster,
+        geometry: {
+          ...cluster.geometry,
+          coordinates: [toPx(lng), toPy(lat)],
+        },
+      };
+    });
   }, [visiblePins, clusteringEnabled, transform, currentMap, windowWidth, windowHeight]);
+
 
   const toggleCategory = (catKey) => {
     setOpenCategories((prev) => ({ ...prev, [catKey]: !prev[catKey] }));
