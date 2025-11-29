@@ -19,20 +19,88 @@ service cloud.firestore {
         && (room.data.ownerUid == request.auth.uid || room.data.allowedUsers.hasAny([request.auth.uid]));
     }
 
-    // ルームドキュメントのルール
-    match /artifacts/{appId}/public/data/rooms/{roomId} {
-      allow read: if isSignedIn();
-      // 新規作成：ドキュメントが存在しない場合のみ許可
-      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId));
-      // 更新：オーナーのみ許可
-      allow update: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
-      // 削除：オーナーのみ許可
-      allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+    function isRoomCollection(collectionName, suffix) {
+      return collectionName.matches('^[A-Za-z0-9_-]+' + suffix + '$');
     }
 
-    // その他のデータ（ピン、マップメタなど）
-    match /artifacts/{appId}/public/data/{doc=**} {
-      allow read, write: if isSignedIn();
+    function collectionMatchesRoom(collectionName, roomId, suffix) {
+      return roomId is string && collectionName == (roomId + suffix);
+    }
+
+    function pinDataIsValid(collectionName) {
+      return request.resource.data.roomId is string
+        && request.resource.data.mapId is string
+        && request.resource.data.type is string
+        && request.resource.data.x is number
+        && request.resource.data.y is number
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.expiresAt is timestamp
+        && (!('note' in request.resource.data) || (request.resource.data.note is string && request.resource.data.note.size() <= 500))
+        && collectionMatchesRoom(collectionName, request.resource.data.roomId, '_pins');
+    }
+
+    function mapMetaIsValid(collectionName) {
+      return request.resource.data.roomId is string
+        && collectionMatchesRoom(collectionName, request.resource.data.roomId, '_mapmeta')
+        && (!('profiles' in request.resource.data) || request.resource.data.profiles.size() <= 20);
+    }
+
+    // ルームドキュメント
+    match /artifacts/{appId}/public/data/rooms/{roomId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && !exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId))
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.allowedUsers.size() == 1
+        && request.resource.data.allowedUsers.hasAny([request.auth.uid]);
+
+      allow update: if isRoomOwner(resource)
+        && request.resource.data.ownerUid == resource.data.ownerUid; // オーナーのすり替え防止
+
+      allow delete: if isRoomOwner(resource);
+    }
+
+    // ピン {roomId}_pins
+    match /artifacts/{appId}/public/data/{collectionName}/{pinId} {
+      allow read: if isSignedIn()
+        && isRoomCollection(collectionName, '_pins')
+        && resource.data.roomId is string
+        && collectionMatchesRoom(collectionName, resource.data.roomId, '_pins')
+        && isRoomMember(roomDoc(appId, resource.data.roomId));
+
+      allow create: if isSignedIn()
+        && isRoomCollection(collectionName, '_pins')
+        && pinDataIsValid(collectionName)
+        && isRoomMember(roomDoc(appId, request.resource.data.roomId));
+
+      allow update, delete: if isSignedIn()
+        && isRoomCollection(collectionName, '_pins')
+        && resource.data.roomId is string
+        && collectionMatchesRoom(collectionName, resource.data.roomId, '_pins')
+        && isRoomMember(roomDoc(appId, resource.data.roomId))
+        && (isRoomOwner(roomDoc(appId, resource.data.roomId)) || resource.data.createdBy == request.auth.uid);
+    }
+
+    // マップメタ {roomId}_mapmeta
+    match /artifacts/{appId}/public/data/{collectionName}/{docId} {
+      allow read: if isSignedIn()
+        && isRoomCollection(collectionName, '_mapmeta')
+        && resource.data.roomId is string
+        && collectionMatchesRoom(collectionName, resource.data.roomId, '_mapmeta')
+        && isRoomMember(roomDoc(appId, resource.data.roomId));
+
+      allow create, update: if isSignedIn()
+        && isRoomCollection(collectionName, '_mapmeta')
+        && mapMetaIsValid(collectionName)
+        && isRoomMember(roomDoc(appId, request.resource.data.roomId));
+
+      allow delete: if false; // map meta の削除はクライアントから不可
+    }
+
+    // その他のパスは拒否
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

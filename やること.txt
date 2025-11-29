@@ -1,16 +1,16 @@
-【実装済み】
-- Firestore 書き込みに roomId と expiresAt を付与し、ピン追加時にマップ/レイヤー/タイプ/座標のバリデーション、ピン上限、ノート文字数、画像サイズ、簡易レートリミットを追加（src/App.jsx）。
-- mapmeta/pin 読み込み時の roomId 補完、プロフィール上限チェックを追加。Vite の環境変数（VITE_FIREBASE_* / VITE_APP_ID）を読めるようにし、.env.example を配置。
+﻿【実装済み】
+- Firestore 書き込みに roomId と expiresAt を付与し、ピン追加時にレイヤー/タイプ/座標のバリデーション、ピン上限、ノート文字数、画像サイズ、簡易レートリミットを追加（src/App.jsx）。
+- mapmeta/pin 読み込み時に roomId 補完、プロフィール上限チェックを追加。Vite の環境変数（VITE_FIREBASE_* / VITE_APP_ID）を読めるようにし、.env.example を整備。
+- Firestore Security Rules を追加。owner/allowedUsers のみが {roomId}_pins / {roomId}_mapmeta を書き込み可、roomId 一致と pin note 長さ<=500 をバリデーション。pending は現状非対応。
 
 【ドラフト/準備】
-- Firestore Security Rules を追加（firestore.rules）。owner/allowedUsers のみ書き込み可、{roomId}_pins / {roomId}_mapmeta へのアクセスに roomId 必須。pending は Cloud Functions 経由で扱う想定。
 - ピン/マップメタに TTL 用 expiresAt をタグ付け済み。Firestore TTL ポリシー有効化と既存データの roomId/expiresAt バックフィルが必要。
 
 【TODO（高優先）】
-- pending 承認/allowedUsers 更新を Cloud Functions 経由に変更し、Rules と整合させる。
+- pending 承認／allowedUsers 更新を Cloud Functions 経由に変更し、Rules と整合させる。
 - 画像アップロードを Firebase Storage 経由に移行（MIME/サイズ検証、署名付き URL、ウイルススキャン、サムネ生成）。
-- サーバー側バリデーション＋レートリミット（Cloud Functions）実装とメトリクス送信。
+- サーバー側バリデーション／レートリミット（Cloud Functions）実装とメトリクス送信。
 - E2E/CI パイプライン追加（lint/test/E2E）、CSP/セキュリティヘッダー適用。
 - ルーム/ピン TTL を Firestore TTL で有効化し、期限切れクリーンアップを確認。
-- 共有/ローカルの画像アップロード動作を自動テストに組み込む。
-- 監査ログ・エクスポート機能、同期 UX 改善、招待リンクの期限付きトークン対応。
+- 共有／ローカルの画像アップロード動作を自動テストに組み込む。
+- 監査ログ・エクスポート機能、招待リンクの期限付きトークン対応、UX 改善。
