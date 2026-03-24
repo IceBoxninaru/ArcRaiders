@@ -1139,6 +1139,7 @@ export default function App() {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.4 });
   const [iconBaseScale, setIconBaseScale] = useState(1.0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showApprovalPanel, setShowApprovalPanel] = useState(false);
   const [isDeletingPins, setIsDeletingPins] = useState(false);
   const [deleteTargetType, setDeleteTargetType] = useState('');
   const [savedRooms, setSavedRooms] = useState([]);
@@ -1179,16 +1180,18 @@ export default function App() {
   const firebaseAvailable = useFirebase && !firebaseBlocked;
   const [modeError, setModeError] = useState('');
   const pendingEntries = roomInfo?.pending || [];
-  const normalizedPending = useMemo(
+  const pendingRequests = useMemo(
     () =>
       pendingEntries.map((p) =>
-        typeof p === 'string' ? { uid: p, name: p } : { uid: p?.uid, name: p?.name || p?.uid || 'guest' },
-      ),
+        typeof p === 'string'
+          ? { raw: p, uid: p, name: p }
+          : { raw: p, uid: p?.uid, name: p?.name || p?.uid || 'guest' },
+      ).filter((p) => p.uid),
     [pendingEntries],
   );
   const isPendingSelf = useMemo(
-    () => Boolean(user && normalizedPending.find((p) => p.uid === user.uid)),
-    [user, normalizedPending],
+    () => Boolean(user && pendingRequests.find((p) => p.uid === user.uid)),
+    [user, pendingRequests],
   );
   const activeMode = roomMode === 'shared' && roomId && firebaseAvailable ? 'shared' : 'local';
   const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
@@ -1236,12 +1239,29 @@ export default function App() {
   const rateLimitRef = useRef({ pinAdd: 0, noteUpdate: 0, imageUpdate: 0 });
   const lastRoomUpdateRef = useRef(0);
   const pendingSentRef = useRef(false);
+  const lastPendingCountRef = useRef(0);
 
   // Reset refs when room changes
   useEffect(() => {
     lastRoomUpdateRef.current = 0;
     pendingSentRef.current = false;
   }, [roomId]);
+
+  useEffect(() => {
+    const currentPendingCount = pendingRequests.length;
+    if (!isOwner || activeMode !== 'shared') {
+      lastPendingCountRef.current = currentPendingCount;
+      setShowApprovalPanel(false);
+      return;
+    }
+    if (currentPendingCount > lastPendingCountRef.current) {
+      setShowApprovalPanel(true);
+    }
+    if (currentPendingCount === 0) {
+      setShowApprovalPanel(false);
+    }
+    lastPendingCountRef.current = currentPendingCount;
+  }, [pendingRequests.length, isOwner, activeMode]);
 
   const [openCategories, setOpenCategories] = useState({
     containers: true,
@@ -2620,7 +2640,25 @@ export default function App() {
     window.history.replaceState({}, '', newUrl);
   };
 
-  const copyRoomLink = () => {
+  const copyTextToClipboard = async (text) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.setAttribute('readonly', '');
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return copied;
+  };
+
+  const copyRoomLink = async () => {
     const activeRoomId = roomId || generateRoomId();
     if (!roomId) {
       const ownerRoomsCount = savedRooms.filter((r) => r.role === 'owner').length;
@@ -2631,13 +2669,15 @@ export default function App() {
       applyRoomId(activeRoomId, { creator: true });
     }
     const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoomId}`;
-    navigator.clipboard
-      .writeText(shareUrl)
-      .then(() => {
+    try {
+      const copied = await copyTextToClipboard(shareUrl);
+      if (copied) {
         setShowShareToast(true);
         setTimeout(() => setShowShareToast(false), 2000);
-      })
-      .catch(() => alert('Room ID: ' + activeRoomId));
+        return;
+      }
+    } catch {}
+    window.prompt('この共有URLをコピーしてください', shareUrl);
   };
 
   const takeScreenshot = async () => {
@@ -2719,7 +2759,7 @@ export default function App() {
       setActionMessage('許可中...');
       await updateDoc(roomDocRef, {
         allowedUsers: arrayUnion(entry.uid),
-        pending: arrayRemove(entry),
+        pending: arrayRemove(entry.raw),
       });
       setActionMessage(`許可しました: ${entry.name || entry.uid}`);
     } catch (err) {
@@ -2736,13 +2776,50 @@ export default function App() {
     try {
       setActionMessage('拒否中...');
       await updateDoc(roomDocRef, {
-        pending: arrayRemove(entry),
+        pending: arrayRemove(entry.raw),
       });
       setActionMessage(`拒否しました: ${entry.name || entry.uid}`);
     } catch (err) {
       const handled = handleFirestoreError(err, 'Reject failed');
       if (!handled) console.error('Reject failed', err);
       setActionMessage('拒否に失敗しました');
+    } finally {
+      setTimeout(() => setActionMessage(''), 2000);
+    }
+  };
+
+  const approveAllPending = async () => {
+    if (!isOwner || !roomDocRef || !pendingRequests.length) return;
+    try {
+      setActionMessage('一括許可中...');
+      await updateDoc(roomDocRef, {
+        allowedUsers: arrayUnion(...pendingRequests.map((entry) => entry.uid)),
+        pending: arrayRemove(...pendingRequests.map((entry) => entry.raw)),
+      });
+      setActionMessage(`${pendingRequests.length}件を許可しました`);
+      setShowApprovalPanel(false);
+    } catch (err) {
+      const handled = handleFirestoreError(err, 'Approve all failed');
+      if (!handled) console.error('Approve all failed', err);
+      setActionMessage('一括許可に失敗しました');
+    } finally {
+      setTimeout(() => setActionMessage(''), 2000);
+    }
+  };
+
+  const rejectAllPending = async () => {
+    if (!isOwner || !roomDocRef || !pendingRequests.length) return;
+    try {
+      setActionMessage('一括拒否中...');
+      await updateDoc(roomDocRef, {
+        pending: arrayRemove(...pendingRequests.map((entry) => entry.raw)),
+      });
+      setActionMessage(`${pendingRequests.length}件を拒否しました`);
+      setShowApprovalPanel(false);
+    } catch (err) {
+      const handled = handleFirestoreError(err, 'Reject all failed');
+      if (!handled) console.error('Reject all failed', err);
+      setActionMessage('一括拒否に失敗しました');
     } finally {
       setTimeout(() => setActionMessage(''), 2000);
     }
@@ -3005,36 +3082,6 @@ export default function App() {
         </div>
       )}
       
-      {isOwner && normalizedPending.length > 0 && (
-        <div className={`absolute z-50 bg-slate-800/90 border border-slate-600 rounded-lg shadow-lg p-3 ${isMobile ? 'top-14 left-2 right-2' : 'top-14 right-2 w-72'}`}>
-          <div className="text-sm font-bold mb-2">承認待ち ({normalizedPending.length})</div>
-          <div className="space-y-2 max-h-40 sm:max-h-60 overflow-auto">
-            {normalizedPending.map((p) => (
-              <div key={p.uid} className="flex items-center justify-between bg-slate-900/80 px-2 py-1 rounded">
-                <div className="text-xs">
-                  <div className="font-semibold text-gray-100">{p.name || p.uid}</div>
-                  <div className="text-[10px] text-gray-400 break-all">{p.uid}</div>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => approvePending(p)}
-                    className="text-[10px] bg-green-700 hover:bg-green-600 text-white px-2 py-1 rounded"
-                  >
-                    許可
-                  </button>
-                  <button
-                    onClick={() => rejectPending(p)}
-                    className="text-[10px] bg-red-800 hover:bg-red-700 text-white px-2 py-1 rounded"
-                  >
-                    拒否
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      
       {activeMode === 'shared' && !isOwner && !isApproved && (
         <div className="absolute inset-0 z-40 bg-black/70 flex flex-col items-center justify-center text-center px-6">
           <div className="text-lg sm:text-xl font-bold mb-2">オーナーの承認が必要です</div>
@@ -3213,6 +3260,90 @@ export default function App() {
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
+          {activeMode === 'shared' && isOwner && roomId && (
+            <div className="relative">
+              <button
+                onClick={() => setShowApprovalPanel((prev) => !prev)}
+                className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-xs font-semibold border shadow ${
+                  pendingRequests.length > 0
+                    ? 'bg-amber-500 hover:bg-amber-400 text-black border-amber-300'
+                    : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700'
+                }`}
+              >
+                <Users size={14} />
+                <span className="hidden sm:inline">承認申請</span>
+                <span
+                  className={`min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    pendingRequests.length > 0 ? 'bg-black text-amber-300' : 'bg-gray-700 text-gray-300'
+                  }`}
+                >
+                  {pendingRequests.length}
+                </span>
+              </button>
+              {showApprovalPanel && (
+                <div className={`absolute right-0 top-full mt-2 z-50 rounded-xl border shadow-2xl bg-slate-900/95 border-slate-700 p-3 ${isMobile ? 'w-[min(22rem,calc(100vw-1rem))]' : 'w-80'}`}>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <div className="text-sm font-bold text-white">承認申請</div>
+                      <div className="text-[11px] text-slate-400">共有ルーム参加リクエストをまとめて管理します</div>
+                    </div>
+                    <button
+                      onClick={() => setShowApprovalPanel(false)}
+                      className="p-1 text-slate-400 hover:text-white"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {pendingRequests.length > 0 ? (
+                    <>
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          onClick={approveAllPending}
+                          className="flex-1 rounded bg-green-700 hover:bg-green-600 text-white text-xs font-semibold py-2"
+                        >
+                          全員許可
+                        </button>
+                        <button
+                          onClick={rejectAllPending}
+                          className="flex-1 rounded bg-red-800 hover:bg-red-700 text-white text-xs font-semibold py-2"
+                        >
+                          全員拒否
+                        </button>
+                      </div>
+                      <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                        {pendingRequests.map((p) => (
+                          <div key={p.uid} className="rounded-lg border border-slate-700 bg-slate-950/80 p-2.5">
+                            <div className="text-xs font-semibold text-white break-all">{p.name || p.uid}</div>
+                            <div className="text-[10px] text-slate-400 break-all mb-2">{p.uid}</div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => approvePending(p)}
+                                className="flex-1 rounded bg-green-700 hover:bg-green-600 text-white text-[11px] font-semibold py-1.5"
+                              >
+                                許可
+                              </button>
+                              <button
+                                onClick={() => rejectPending(p)}
+                                className="flex-1 rounded bg-red-800 hover:bg-red-700 text-white text-[11px] font-semibold py-1.5"
+                              >
+                                拒否
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-4 text-center text-xs text-slate-400">
+                      現在の承認申請はありません
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Desktop Controls */}
           <div className="hidden md:flex items-center gap-2">
             <div className="flex items-center gap-2 bg-gray-800 rounded px-2 py-1 border border-gray-700">
