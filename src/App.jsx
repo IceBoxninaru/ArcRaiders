@@ -164,6 +164,10 @@ const appId =
   typeof globalThis !== 'undefined' && typeof globalThis.__app_id !== 'undefined'
     ? globalThis.__app_id
     : import.meta.env.VITE_APP_ID || 'arcraidersmap';
+const initialAuthToken =
+  typeof globalThis !== 'undefined' && typeof globalThis.__initial_auth_token !== 'undefined'
+    ? globalThis.__initial_auth_token
+    : '';
 
 const SAVED_ROOMS_KEY = 'tactical_saved_rooms';
 const MAX_OWNER_ROOMS = 5;
@@ -1466,8 +1470,8 @@ export default function App() {
         return;
       }
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+        if (initialAuthToken) {
+          await signInWithCustomToken(auth, initialAuthToken);
         } else {
           await signInAnonymously(auth);
         }

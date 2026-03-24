@@ -1,42 +1,50 @@
-name: build-and-deploy
+name: build-and-deploy-ec2
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
-      - run: npm run build
-      - name: Copy dist to docs for Pages
-        run: |
-          rm -rf docs
-          mkdir docs
-          cp -r dist/* docs/
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build frontend
+        run: npm run build
+      - name: Build Docker image
+        run: docker build -t arcraiders:test .
 
   deploy:
-    needs: build
+    needs: validate
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to EC2 over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          port: ${{ secrets.EC2_PORT }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            sudo mkdir -p /opt/arcraiders
+            sudo chown -R "$USER":"$USER" /opt/arcraiders
+            if [ ! -d /opt/arcraiders/.git ]; then
+              git clone https://github.com/${{ github.repository }} /opt/arcraiders
+            fi
+            cd /opt/arcraiders
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+            test -f .env.production
+            sudo docker compose up -d --build --remove-orphans
+            curl --fail http://localhost/api/health

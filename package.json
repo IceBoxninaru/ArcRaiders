@@ -7,8 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "deploy": "gh-pages -d dist"
+    "preview": "vite preview"
   },
   "repository": {
     "type": "git",
@@ -20,7 +19,6 @@
   "bugs": {
     "url": "https://github.com/IceBoxninaru/ArcRaiders/issues"
   },
-  "homepage": "https://github.com/IceBoxninaru/ArcRaiders#readme",
   "dependencies": {
     "firebase": "^12.6.0",
     "html2canvas": "^1.4.1",
@@ -31,8 +29,13 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.1",
-    "gh-pages": "^6.3.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
     "source-map": "^0.7.6",
+    "tailwindcss": "^3.4.17",
     "vite": "^7.2.4"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.0"
   }
 }

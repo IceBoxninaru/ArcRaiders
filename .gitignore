@@ -1,10 +1,15 @@
 .env
+.env.production
 node_modules/
 dist/
 .vite/
 .DS_Store
+__pycache__/
+*.pyc
 site/assets/map/
 arcraiders_workbook_v2.xlsx
 ~$*.xlsx
 *.xlsx
 .claude/settings.local.json
+*.tgz
+nul

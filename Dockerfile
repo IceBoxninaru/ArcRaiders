@@ -1,24 +1,33 @@
-FROM node:20-slim AS builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /app
 
-# Install dependencies first (better cache)
-COPY package*.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Copy source and build
-COPY . .
+COPY index.html vite.config.js tailwind.config.js postcss.config.js ./
+COPY public ./public
+COPY src ./src
+
 RUN npm run build
 
-# Runtime image to serve static files
-FROM node:20-slim AS runner
+FROM python:3.12-slim AS runner
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-RUN npm install -g serve
+RUN adduser --disabled-password --gecos "" appuser
 
-COPY --from=builder /app/dist ./dist
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-ENV HOST=0.0.0.0
-EXPOSE 4173
+COPY backend ./backend
+COPY --from=frontend-builder /app/dist ./dist
 
-CMD ["serve", "-s", "dist", "-l", "4173"]
+USER appuser
+
+EXPOSE 8000
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "backend.app:app"]

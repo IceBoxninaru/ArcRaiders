@@ -1,9 +1,12 @@
 node_modules
 dist
 npm-debug.log*
-package-lock.json
 .git
+.github
 .gitignore
 .DS_Store
-docker-compose.yml
-Dockerfile
+docs
+.claude
+server.log
+server.err
+nul
