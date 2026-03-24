@@ -130,6 +130,11 @@ INITIAL_AUTH_TOKEN=
 DISABLE_FIREBASE=false
 ```
 
+配置場所:
+
+- EC2 では `/opt/arcraiders/.env.production` に置きます。
+- `docker-compose.yml` と同じ階層に置く必要があります。
+
 意味:
 
 - `FIREBASE_*`
@@ -143,6 +148,9 @@ DISABLE_FIREBASE=false
 
 Firebase をまだ使わない場合は、`FIREBASE_*` を空欄にして `DISABLE_FIREBASE=true` で起動できます。
 
+実際の Firebase 値を含む `.env.production` は GitHub には置かず、必要な人にだけ個別連絡で共有します。  
+GitHub にはテンプレートとして `.env.production.example` だけを置きます。
+
 ### ローカルの Vite 開発用
 
 ```env
@@ -155,6 +163,11 @@ VITE_FIREBASE_APP_ID=
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_APP_ID=arcraidersmap
 ```
+
+配置場所:
+
+- ローカル開発ではプロジェクト直下の `.env` に置きます。
+- 例: `ArcRaiders/.env`
 
 ## ローカルで動かす方法
 
@@ -178,6 +191,10 @@ npm run dev
 cp .env.production.example .env.production
 docker compose up --build
 ```
+
+このとき作る `.env.production` の場所は、プロジェクト直下です。
+
+- 例: `ArcRaiders/.env.production`
 
 起動後:
 
@@ -249,6 +266,15 @@ cd /opt/arcraiders
 cp .env.production.example .env.production
 nano .env.production
 ```
+
+作成場所:
+
+- `/opt/arcraiders/.env.production`
+
+注意:
+
+- 実際の Firebase 値が入った `.env.production` は GitHub に push しません。
+- 共有したい相手には、個人の連絡先で `.env.production` の内容だけを送って、各自で `/opt/arcraiders/.env.production` を作成してもらいます。
 
 共有機能を使う場合の例:
 
