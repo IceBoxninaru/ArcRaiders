@@ -1164,6 +1164,7 @@ export default function App() {
   const [savedRooms, setSavedRooms] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const didDragRef = useRef(false);
   const [showShareToast, setShowShareToast] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [roomMode, setRoomMode] = useState('local');
@@ -1793,7 +1794,7 @@ export default function App() {
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_pins`;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), where('roomId', '==', roomId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1814,7 +1815,7 @@ export default function App() {
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_mapmeta`;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), where('roomId', '==', roomId));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1962,6 +1963,7 @@ export default function App() {
     if (e.touches.length === 1) {
       const touch = e.touches[0];
       setIsDragging(true);
+      didDragRef.current = false;
       setDragStart({ x: touch.clientX - transform.x, y: touch.clientY - transform.y });
       setTouchState({ touches: [touch], lastDistance: null, lastCenter: null });
     } else if (e.touches.length === 2) {
@@ -1979,6 +1981,7 @@ export default function App() {
 
   const handleTouchMove = useCallback((e) => {
     if (e.touches.length === 1 && isDragging) {
+      didDragRef.current = true;
       const touch = e.touches[0];
       setTransform((prev) => ({
         ...prev,
@@ -2023,12 +2026,14 @@ export default function App() {
   const handleMouseDown = (e) => {
     if (e.button === 1 || selectedTool === 'move') {
       setIsDragging(true);
+      didDragRef.current = false;
       setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
     }
   };
 
   const handleMouseMove = (e) => {
     if (isDragging) {
+      didDragRef.current = true;
       setTransform((prev) => ({ ...prev, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
     }
   };
@@ -2037,7 +2042,7 @@ export default function App() {
 
   const handleMapClick = async (e) => {
     if (e.target.closest('.pin-element')) return;
-    if (isDragging) return;
+    if (didDragRef.current) return;
     setActionMessage('');
     
     if (activeMode === 'shared' && (!user || !roomId)) {
