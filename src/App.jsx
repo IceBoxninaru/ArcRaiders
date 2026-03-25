@@ -501,7 +501,7 @@ const PinPopup = ({ pin, markerDef, onClose, onUpdateImage, onUpdateNote, onDele
   return (
     <div
       className={`fixed z-[100] bg-gray-900 text-white rounded-lg shadow-2xl border border-gray-700 overflow-hidden
-        ${isMobile ? 'inset-x-4 bottom-4 top-auto max-h-[70vh]' : 'w-72 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'}`}
+        ${isMobile ? 'inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] top-auto max-h-[62vh] rounded-2xl' : 'w-72 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'}`}
       onClick={(e) => e.stopPropagation()}
     >
       <div
@@ -629,6 +629,12 @@ const MobileSidebar = ({
   pendingCount,
   triggerFileUpload,
 }) => {
+  const activeMobileMarker = selectedTool !== 'move' ? mergedMarkers[selectedTool] : null;
+  const activeMobileCategory = activeMobileMarker
+    ? MARKER_CATEGORIES[activeMobileMarker.cat] || MARKER_CATEGORIES.others
+    : null;
+  const activeMobileCount = activeMobileMarker ? markerCounts[selectedTool] || 0 : null;
+
   return (
     <>
       {/* Backdrop */}
@@ -641,15 +647,18 @@ const MobileSidebar = ({
       
       {/* Sidebar */}
       <div
-        className={`fixed top-0 left-0 h-full w-72 bg-gray-900/98 backdrop-blur-lg border-r border-gray-800 z-50 transform transition-transform duration-300 ease-in-out md:hidden
+        className={`fixed top-0 left-0 h-full w-[min(88vw,24rem)] bg-gray-900/98 backdrop-blur-lg border-r border-gray-800 z-50 transform transition-transform duration-300 ease-in-out md:hidden
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           {/* Header */}
-          <div className="p-3 border-b border-gray-800 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldAlert className="text-orange-500 w-5 h-5" />
-              <span className="font-bold text-white">TACTICAL</span>
+              <div>
+                <div className="font-bold text-white tracking-wide">TACTICAL</div>
+                <div className="text-[10px] text-gray-500">スマホ用クイックパネル</div>
+              </div>
             </div>
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white">
               <X size={20} />
@@ -657,7 +666,37 @@ const MobileSidebar = ({
           </div>
 
           {/* Search & Controls */}
-          <div className="p-3 border-b border-gray-800 space-y-3">
+          <div className="p-4 border-b border-gray-800 space-y-3">
+            <div className="rounded-2xl border border-gray-800 bg-black/30 px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">現在の操作</div>
+              {activeMobileMarker ? (
+                <div className="mt-2 flex items-center gap-3">
+                  <div
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-gray-700 bg-gray-800/90"
+                    style={{ color: activeMobileCategory?.color || '#f97316' }}
+                  >
+                    <activeMobileMarker.icon size={18} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-white">{activeMobileMarker.label}</div>
+                    <div className="text-[11px] text-gray-400">
+                      {activeMobileCategory?.label || 'ピン'} ・ {activeMobileCount}件
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedTool('move')}
+                    className="rounded-full border border-gray-700 bg-gray-800 px-2.5 py-1 text-[11px] font-semibold text-gray-300"
+                  >
+                    解除
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 rounded-xl border border-dashed border-gray-700 bg-gray-800/40 px-3 py-2 text-xs text-gray-400">
+                  左の一覧から置くピンを選ぶと、ここに現在のピン種類が表示されます。
+                </div>
+              )}
+            </div>
+
             <div className="relative">
               <Search className="absolute left-2 top-1.5 text-gray-500 w-4 h-4" />
               <input
@@ -812,10 +851,10 @@ const MobileSidebar = ({
           </div>
 
           {/* Marker List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto px-3 pb-3 pt-2 space-y-2">
             {Object.entries(MARKER_CATEGORIES).map(([catKey, category]) => (
               <div key={catKey} className="rounded overflow-hidden">
-                <div className="w-full flex items-center justify-between px-2 py-2 bg-gray-800/50 text-xs font-bold text-gray-300">
+                <div className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 bg-gray-800/50 text-xs font-bold text-gray-300">
                   <button
                     onClick={() => toggleCategory(catKey)}
                     className="flex items-center gap-2 flex-1 text-left hover:text-white"
@@ -832,10 +871,10 @@ const MobileSidebar = ({
                   </button>
                 </div>
                 {openCategories[catKey] && (
-                  <div className="bg-black/20 p-1 space-y-0.5">
-                    {Object.values(mergedMarkers)
-                      .filter((m) => m.cat === catKey)
-                      .filter((m) => m.label.includes(searchTerm))
+                    <div className="bg-black/20 mt-1 rounded-xl p-1.5 space-y-1">
+                      {Object.values(mergedMarkers)
+                        .filter((m) => m.cat === catKey)
+                        .filter((m) => m.label.includes(searchTerm))
                       .map((marker) => {
                         const MarkerIcon = marker.icon;
                         const isActive = selectedTool === marker.id;
@@ -851,9 +890,9 @@ const MobileSidebar = ({
                               setSelectedTool(marker.id);
                               onClose();
                             }}
-                            className={`w-full flex items-center gap-2 px-2 py-2 rounded text-xs transition-all cursor-pointer ${
+                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
                               isActive
-                                ? 'bg-gray-700 text-white ring-1 ring-inset ring-gray-500'
+                                ? 'bg-gray-700 text-white ring-1 ring-inset ring-orange-400'
                                 : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                             }`}
                           >
@@ -867,7 +906,7 @@ const MobileSidebar = ({
                               <MarkerIcon size={18} color={category.color} />
                             )}
                             <span className="flex-1 text-left truncate">{marker.label}</span>
-                            <span className="text-[11px] text-gray-400">{count}</span>
+                            <span className="rounded-full bg-gray-900 px-2 py-1 text-[11px] text-gray-400">{count}</span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={(e) => {
@@ -947,7 +986,7 @@ const MobileHeaderMenu = ({
   return (
     <div className="fixed inset-0 z-50 md:hidden">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="absolute top-0 right-0 w-80 h-full bg-gray-900 border-l border-gray-800 overflow-y-auto">
+      <div className="absolute top-0 right-0 h-full w-[min(92vw,24rem)] bg-gray-900 border-l border-gray-800 overflow-y-auto rounded-l-[1.75rem] shadow-2xl pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <span className="font-bold text-white">メニュー</span>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-white">
@@ -1164,7 +1203,6 @@ export default function App() {
   const [savedRooms, setSavedRooms] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const didDragRef = useRef(false);
   const [showShareToast, setShowShareToast] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [roomMode, setRoomMode] = useState('local');
@@ -1375,6 +1413,27 @@ export default function App() {
     });
     return counts;
   }, [pins, currentMap, currentLayer]);
+  const selectedToolMeta = useMemo(() => {
+    if (selectedTool === 'move') {
+      return {
+        label: '移動',
+        detail: '地図の移動',
+        count: null,
+        color: '#9ca3af',
+        icon: Move,
+      };
+    }
+
+    const marker = mergedMarkers[selectedTool];
+    const category = marker ? mergedCategories[marker.cat] || mergedCategories.others : null;
+    return {
+      label: marker?.label || 'ピン選択',
+      detail: category?.label || 'ピン配置',
+      count: marker ? markerCounts[selectedTool] || 0 : null,
+      color: category?.color || '#f97316',
+      icon: marker?.icon || MapPin,
+    };
+  }, [selectedTool, mergedMarkers, mergedCategories, markerCounts]);
 
   useEffect(() => {
     if (!firebaseBlocked) return;
@@ -1794,7 +1853,7 @@ export default function App() {
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_pins`;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), where('roomId', '==', roomId));
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1815,7 +1874,7 @@ export default function App() {
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_mapmeta`;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), where('roomId', '==', roomId));
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1963,7 +2022,6 @@ export default function App() {
     if (e.touches.length === 1) {
       const touch = e.touches[0];
       setIsDragging(true);
-      didDragRef.current = false;
       setDragStart({ x: touch.clientX - transform.x, y: touch.clientY - transform.y });
       setTouchState({ touches: [touch], lastDistance: null, lastCenter: null });
     } else if (e.touches.length === 2) {
@@ -1981,7 +2039,6 @@ export default function App() {
 
   const handleTouchMove = useCallback((e) => {
     if (e.touches.length === 1 && isDragging) {
-      didDragRef.current = true;
       const touch = e.touches[0];
       setTransform((prev) => ({
         ...prev,
@@ -2021,32 +2078,26 @@ export default function App() {
   const handleTouchEnd = useCallback(() => {
     setIsDragging(false);
     setTouchState({ touches: [], lastDistance: null, lastCenter: null });
-    didDragRef.current = false;
   }, []);
 
   const handleMouseDown = (e) => {
     if (e.button === 1 || selectedTool === 'move') {
       setIsDragging(true);
-      didDragRef.current = false;
       setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
     }
   };
 
   const handleMouseMove = (e) => {
     if (isDragging) {
-      didDragRef.current = true;
       setTransform((prev) => ({ ...prev, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
     }
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    didDragRef.current = false;
-  };
+  const handleMouseUp = () => setIsDragging(false);
 
   const handleMapClick = async (e) => {
     if (e.target.closest('.pin-element')) return;
-    if (didDragRef.current) return;
+    if (isDragging) return;
     setActionMessage('');
     
     if (activeMode === 'shared' && (!user || !roomId)) {
@@ -3119,9 +3170,13 @@ export default function App() {
     }
   }, [canManageRequests]);
   const sharedSetupModal = showSharedSetup && (
-    <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4 z-[120]">
-      <div className="bg-white border border-gray-300 rounded-xl shadow-2xl max-w-lg w-full p-4 sm:p-5 space-y-3 text-gray-900 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-3">
+    <div className={`fixed inset-0 bg-black/60 z-[120] ${isMobile ? 'flex items-end justify-stretch p-0' : 'flex items-center justify-center p-4'}`}>
+      <div className={`bg-white border border-gray-300 shadow-2xl w-full text-gray-900 overflow-y-auto ${
+        isMobile
+          ? 'rounded-t-[1.75rem] rounded-b-none max-h-[90vh] px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 space-y-3'
+          : 'rounded-xl max-w-lg p-4 sm:p-5 space-y-3 max-h-[85vh]'
+      }`}>
+        <div className={`flex items-start justify-between gap-3 ${isMobile ? 'sticky top-0 bg-white pb-3 z-10' : ''}`}>
           <div>
             <div className="text-base sm:text-lg font-bold flex items-center gap-2">
               <Users size={18} />
@@ -3347,7 +3402,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="flex gap-2 justify-end pt-2">
+        <div className={`flex gap-2 justify-end pt-2 ${isMobile ? 'sticky bottom-0 bg-white border-t border-gray-200 -mx-4 px-4 pt-3 pb-0 mt-2' : ''}`}>
           <button
             onClick={handleCancelShared}
             className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
@@ -3367,9 +3422,13 @@ export default function App() {
     </div>
   );
   const requestInboxModal = showRequestInbox && canManageRequests && (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-4 sm:p-5 text-white shadow-2xl space-y-3 max-h-[80vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-3">
+    <div className={`fixed inset-0 z-[130] bg-black/70 backdrop-blur-sm ${isMobile ? 'flex items-end justify-stretch p-0' : 'flex items-center justify-center p-4'}`}>
+      <div className={`w-full border border-gray-700 bg-gray-900 text-white shadow-2xl overflow-y-auto ${
+        isMobile
+          ? 'rounded-t-[1.75rem] rounded-b-none px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 max-h-[82vh] space-y-3'
+          : 'max-w-md rounded-2xl p-4 sm:p-5 space-y-3 max-h-[80vh]'
+      }`}>
+        <div className={`flex items-start justify-between gap-3 ${isMobile ? 'sticky top-0 bg-gray-900 pb-3 z-10' : ''}`}>
           <div>
             <div className="flex items-center gap-2 text-lg font-bold">
               <Inbox size={18} />
@@ -3502,7 +3561,7 @@ export default function App() {
 
   // Main App UI
   return (
-    <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative touch-none">
+    <div className="flex flex-col h-screen bg-black text-gray-200 overflow-hidden font-sans relative">
       {actionMessage && (
         <div className="fixed top-4 inset-x-0 z-[200] flex justify-center pointer-events-none">
           <div className="bg-blue-900/90 border border-blue-700 text-xs px-4 py-2 rounded shadow-lg">
@@ -3551,7 +3610,7 @@ export default function App() {
       {requestInboxModal}
 
       {/* Header */}
-      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-2 sm:px-4 z-30 shadow-lg shrink-0">
+      <header className="h-14 sm:h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-2.5 sm:px-4 z-30 shadow-lg shrink-0">
         {/* Left Section */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Mobile Menu Button */}
@@ -3562,8 +3621,8 @@ export default function App() {
             <Menu size={20} />
           </button>
           
-          <ShieldAlert className="text-orange-500 w-4 h-4 sm:w-5 sm:h-5 hidden sm:block" />
-          <h1 className="font-bold text-sm sm:text-base tracking-wider text-gray-100 hidden sm:block">TACTICAL</h1>
+          <ShieldAlert className="text-orange-500 w-4 h-4 sm:w-5 sm:h-5" />
+          <h1 className="font-bold text-sm sm:text-base tracking-wider text-gray-100">TACTICAL</h1>
           
           {/* Desktop: Mode Selection Button */}
           <button
@@ -3660,11 +3719,11 @@ export default function App() {
         </div>
 
         {/* Mobile/Tablet Center Controls */}
-        <div className="flex lg:hidden items-center gap-1 flex-1 justify-center mx-2">
+        <div className="flex lg:hidden items-center gap-1.5 flex-1 justify-center mx-2 min-w-0">
           <select
             value={currentMap}
             onChange={(e) => setCurrentMap(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1.5 max-w-[90px]"
+            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-2 min-w-0 max-w-[108px]"
           >
             {Object.values(MAP_CONFIG).map((map) => (
               <option key={map.id} value={map.id}>
@@ -3676,7 +3735,7 @@ export default function App() {
           <select
             value={activeProfile}
             onChange={(e) => setActiveProfile(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded px-2 py-1.5 max-w-[70px]"
+            className="bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded-lg px-2 py-2 min-w-0 max-w-[82px]"
           >
             {profiles.map((p) => (
               <option key={p} value={p}>
@@ -3687,7 +3746,7 @@ export default function App() {
 
           <button
             onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs font-bold rounded border transition-all bg-gray-800 text-gray-300 border-gray-700"
+            className="flex items-center gap-1 px-2.5 py-2 text-xs font-bold rounded-lg border transition-all bg-gray-800 text-gray-300 border-gray-700"
           >
             <Settings size={14} />
           </button>
@@ -3926,8 +3985,10 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div className="p-2 border-t border-gray-800 text-[10px] text-gray-600 text-center">
-            Room: {roomId || 'ローカル'}
+          <div className="border-t border-gray-800 px-4 pt-3 text-[11px] text-gray-500">
+            <div className="rounded-2xl border border-gray-800 bg-black/20 px-3 py-2 text-center">
+              Room: {roomId || 'ローカル'}
+            </div>
           </div>
         </div>
 
@@ -4001,7 +4062,7 @@ export default function App() {
         {/* Map Area */}
         <div
           ref={mapWrapperRef}
-          className={`flex-1 relative overflow-hidden bg-black ${selectedTool === 'move' ? 'cursor-grab' : 'cursor-crosshair'} ${isDragging ? 'cursor-grabbing' : ''}`}
+          className={`flex-1 relative overflow-hidden bg-black touch-none ${selectedTool === 'move' ? 'cursor-grab' : 'cursor-crosshair'} ${isDragging ? 'cursor-grabbing' : ''}`}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -4151,10 +4212,12 @@ export default function App() {
           })()}
 
           {/* Floating Controls */}
-          <div className={`absolute z-10 pointer-events-none ${isMobile ? 'bottom-4 right-2 left-2' : 'bottom-4 right-4'}`}>
-            <div className={`flex ${isMobile ? 'justify-between' : 'items-end gap-3 justify-end'}`}>
+          <div className={`absolute z-10 pointer-events-none ${isMobile ? 'bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] right-3' : 'bottom-4 right-4'}`}>
+            <div className={`flex ${isMobile ? 'flex-col items-end gap-2' : 'items-end gap-3 justify-end'}`}>
               {/* Icon Scale Slider */}
-              <div className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-3 py-2 border border-gray-700/50 shadow pointer-events-auto">
+              <div className={`flex items-center gap-2 bg-black/40 backdrop-blur-sm border border-gray-700/50 shadow pointer-events-auto ${
+                isMobile ? 'rounded-2xl px-3 py-2.5' : 'rounded-full px-3 py-2'
+              }`}>
                 <Scaling size={14} className="text-gray-400" />
                 <input
                   type="range"
@@ -4163,14 +4226,14 @@ export default function App() {
                   step="0.1"
                   value={iconBaseScale}
                   onChange={(e) => setIconBaseScale(parseFloat(e.target.value))}
-                  className="w-16 sm:w-28 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  className={`${isMobile ? 'w-24' : 'w-16 sm:w-28'} h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500`}
                 />
               </div>
 
               {/* Zoom Controls */}
               <div className="flex items-center gap-2 pointer-events-auto">
                 {isMobile ? (
-                  <div className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full px-2 py-1 border border-gray-700/50">
+                  <div className="flex items-center gap-1 bg-black/55 backdrop-blur-sm rounded-2xl px-2 py-1.5 border border-gray-700/50 shadow-lg">
                     <button
                       onClick={() => setZoom(transform.scale - 0.2)}
                       className="p-2 text-gray-300 hover:text-white"
@@ -4208,6 +4271,71 @@ export default function App() {
         </div>
       </div>
 
+      {isMobile && (
+        <div className="absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-20 md:hidden pointer-events-none">
+          <div className="pointer-events-auto rounded-[1.35rem] border border-gray-700/80 bg-gray-900/92 backdrop-blur-xl shadow-2xl px-2 py-2">
+            <div className="grid grid-cols-[auto,1fr,auto,auto] gap-2 items-center">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gray-700 bg-gray-800 text-gray-200 active:scale-[0.98]"
+                title="ピン一覧"
+              >
+                <Menu size={18} />
+              </button>
+
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="min-w-0 rounded-2xl border border-gray-700 bg-gray-800 px-3 py-2.5 text-left active:scale-[0.99]"
+              >
+                <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500">{selectedToolMeta.detail}</div>
+                <div className="mt-1 flex items-center gap-2 min-w-0">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-gray-700 bg-black/30 shrink-0"
+                    style={{ color: selectedToolMeta.color }}
+                  >
+                    <selectedToolMeta.icon size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-white">{selectedToolMeta.label}</div>
+                    <div className="text-[11px] text-gray-400">
+                      {selectedToolMeta.count === null ? '一覧から選択' : `${selectedToolMeta.count}件`}
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (canManageRequests) {
+                    openPendingInbox();
+                    return;
+                  }
+                  setSharedSetupRole(isOwner || roomCreator ? 'owner' : 'member');
+                  setShowSharedSetup(true);
+                }}
+                className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-gray-700 bg-gray-800 text-gray-200 active:scale-[0.98]"
+                title={canManageRequests ? '承認申請' : '共有ルーム'}
+              >
+                {canManageRequests ? <Inbox size={18} /> : <Users size={18} />}
+                {pendingRequests.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                    {pendingRequests.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowSettings(true)}
+                className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gray-700 bg-gray-800 text-gray-200 active:scale-[0.98]"
+                title="設定"
+              >
+                <Settings size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Share Toast */}
       {showShareToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded shadow-xl z-50 animate-bounce pointer-events-none text-sm">
@@ -4217,9 +4345,13 @@ export default function App() {
 
       {/* Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-md p-4 sm:p-5 space-y-4 shadow-2xl max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
+        <div className={`fixed inset-0 z-50 bg-black/70 backdrop-blur-sm ${isMobile ? 'flex items-end justify-stretch p-0' : 'flex items-center justify-center p-4'}`}>
+          <div className={`bg-gray-900 border border-gray-700 w-full shadow-2xl overflow-y-auto ${
+            isMobile
+              ? 'rounded-t-[1.75rem] rounded-b-none px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 max-h-[84vh] space-y-4'
+              : 'max-w-md rounded-xl p-4 sm:p-5 space-y-4 max-h-[80vh]'
+          }`}>
+            <div className={`flex items-center justify-between ${isMobile ? 'sticky top-0 bg-gray-900 pb-3 z-10' : ''}`}>
               <h3 className="text-lg font-bold text-white">設定</h3>
               <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-white p-1">
                 <X size={18} />
