@@ -36,15 +36,15 @@ jobs:
           script_stop: true
           script: |
             set -e
-            sudo mkdir -p /opt/arcraiders
-            sudo chown -R "$USER":"$USER" /opt/arcraiders
-            if [ ! -d /opt/arcraiders/.git ]; then
-              git clone https://github.com/${{ github.repository }} /opt/arcraiders
-            fi
-            cd /opt/arcraiders
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
-            test -f .env.production
+            APP_DIR=/opt/arcraiders-live
+            TMP_DIR="$(mktemp -d)"
+            sudo mkdir -p "$APP_DIR"
+            sudo chown -R "$USER":"$USER" "$APP_DIR"
+            sudo chmod -R u+rwX "$APP_DIR"
+            test -f "$APP_DIR/.env.production"
+            git clone --depth 1 https://github.com/${{ github.repository }} "$TMP_DIR"
+            rsync -a --delete --exclude ".git" --exclude ".env.production" "$TMP_DIR"/ "$APP_DIR"/
+            rm -rf "$TMP_DIR"
+            cd "$APP_DIR"
             sudo docker compose up -d --build --remove-orphans
             curl --fail http://localhost/api/health
