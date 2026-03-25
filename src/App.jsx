@@ -2021,6 +2021,7 @@ export default function App() {
   const handleTouchEnd = useCallback(() => {
     setIsDragging(false);
     setTouchState({ touches: [], lastDistance: null, lastCenter: null });
+    didDragRef.current = false;
   }, []);
 
   const handleMouseDown = (e) => {
@@ -2038,7 +2039,10 @@ export default function App() {
     }
   };
 
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    didDragRef.current = false;
+  };
 
   const handleMapClick = async (e) => {
     if (e.target.closest('.pin-element')) return;
