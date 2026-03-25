@@ -32,9 +32,27 @@ def build_firebase_config():
   return {key: value for key, value in config.items() if value}
 
 
+def firebase_diagnostics():
+  config = build_firebase_config()
+  required_keys = ['apiKey', 'authDomain', 'projectId', 'messagingSenderId', 'appId']
+  missing_keys = [key for key in required_keys if not config.get(key)]
+  firebase_disabled = read_bool('DISABLE_FIREBASE', False)
+  return {
+    'firebaseConfigured': len(missing_keys) == 0,
+    'firebaseDisabled': firebase_disabled,
+    'firebaseConfigKeys': sorted(config.keys()),
+    'missingFirebaseKeys': missing_keys,
+    'appId': read_env('APP_ID', 'arcraidersmap'),
+    'initialAuthTokenPresent': bool(read_env('INITIAL_AUTH_TOKEN', '')),
+    'sharedRealtimeReady': not firebase_disabled and len(missing_keys) == 0,
+  }
+
+
 @app.get('/api/health')
 def health_check():
-  return jsonify({'status': 'ok', 'service': 'arcraiders-web'})
+  payload = {'status': 'ok', 'service': 'arcraiders-web'}
+  payload.update(firebase_diagnostics())
+  return jsonify(payload)
 
 
 @app.get('/config.js')

@@ -5,7 +5,7 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   signInAnonymously,
-  onAuthStateChanged,
+  onIdTokenChanged,
   signInWithCustomToken,
 } from 'firebase/auth';
 import {
@@ -20,6 +20,7 @@ import {
   serverTimestamp,
   Timestamp,
   getDocs,
+  getDoc,
   writeBatch,
   where,
   query,
@@ -74,6 +75,7 @@ import {
   ZoomOut,
   Copy,
   Edit3,
+  Inbox,
 } from 'lucide-react';
 
 /* ========================================
@@ -159,6 +161,9 @@ if (firebaseEnabled && !firebaseDisabledFlag) {
 }
 
 const useFirebase = firebaseReady;
+const realtimeDisabledMessage = firebaseDisabledFlag
+  ? 'Firebaseが無効化されているため、共有ピンはリアルタイム同期されません。.env.production の DISABLE_FIREBASE を false にしてください。'
+  : 'Firebase設定が読み込めていないため、共有ピンはリアルタイム同期されません。.env.production と /config.js を確認してください。';
 
 const appId =
   typeof globalThis !== 'undefined' && typeof globalThis.__app_id !== 'undefined'
@@ -618,6 +623,10 @@ const MobileSidebar = ({
   modeChosen,
   applyRoomId,
   setShowSharedSetup,
+  setSharedSetupRole,
+  roomCreator,
+  isOwner,
+  pendingCount,
   triggerFileUpload,
 }) => {
   return (
@@ -754,6 +763,16 @@ const MobileSidebar = ({
                 disabled={roomMode === "local" || (roomMode === "shared" && modeChosen)}
                 className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 disabled:opacity-50"
               />
+              <button
+                onClick={() => {
+                  setSharedSetupRole(isOwner || roomCreator ? 'owner' : 'member');
+                  setShowSharedSetup(true);
+                }}
+                className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50 whitespace-nowrap"
+                disabled={roomMode === "local"}
+              >
+                {pendingCount > 0 && isOwner ? `管理(${pendingCount})` : '管理'}
+              </button>
             </div>
             
             <div className="flex gap-2">
@@ -1139,7 +1158,7 @@ export default function App() {
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.4 });
   const [iconBaseScale, setIconBaseScale] = useState(1.0);
   const [showSettings, setShowSettings] = useState(false);
-  const [showApprovalPanel, setShowApprovalPanel] = useState(false);
+  const [showRequestInbox, setShowRequestInbox] = useState(false);
   const [isDeletingPins, setIsDeletingPins] = useState(false);
   const [deleteTargetType, setDeleteTargetType] = useState('');
   const [savedRooms, setSavedRooms] = useState([]);
@@ -1152,6 +1171,7 @@ export default function App() {
   const [modeChosen, setModeChosen] = useState(false);
   const [showSharedSetup, setShowSharedSetup] = useState(false);
   const [roomCreator, setRoomCreator] = useState(false);
+  const [sharedSetupRole, setSharedSetupRole] = useState('member');
   const [activeProfile, setActiveProfile] = useState('default');
   const [newProfileName, setNewProfileName] = useState('');
   const [renameProfileName, setRenameProfileName] = useState('');
@@ -1177,21 +1197,45 @@ export default function App() {
     () => (db && roomId ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId) : null),
     [roomId],
   );
+  const roomRequestsRef = useMemo(
+    () => (db && roomId ? collection(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId, 'requests') : null),
+    [db, roomId],
+  );
   const firebaseAvailable = useFirebase && !firebaseBlocked;
   const [modeError, setModeError] = useState('');
+  const [requestInbox, setRequestInbox] = useState([]);
+  const [selfRequestEntry, setSelfRequestEntry] = useState(null);
+  const [joinRequestState, setJoinRequestState] = useState('idle');
   const pendingEntries = roomInfo?.pending || [];
-  const pendingRequests = useMemo(
+  const legacyPendingRequests = useMemo(
     () =>
-      pendingEntries.map((p) =>
-        typeof p === 'string'
-          ? { raw: p, uid: p, name: p }
-          : { raw: p, uid: p?.uid, name: p?.name || p?.uid || 'guest' },
-      ).filter((p) => p.uid),
+      pendingEntries
+        .map((p) =>
+          typeof p === 'string'
+            ? { raw: p, uid: p, name: p, createdAtMs: 0 }
+            : { raw: p, uid: p?.uid, name: p?.name || p?.uid || 'guest', createdAtMs: 0 },
+        )
+        .filter((p) => p.uid),
     [pendingEntries],
   );
+  const pendingRequests = useMemo(() => {
+    const merged = new Map();
+    [...legacyPendingRequests, ...requestInbox].forEach((entry) => {
+      if (!entry?.uid) return;
+      const existing = merged.get(entry.uid);
+      merged.set(entry.uid, {
+        uid: entry.uid,
+        name: entry.name || existing?.name || entry.uid,
+        raw: entry.raw ?? existing?.raw,
+        requestRef: entry.requestRef ?? existing?.requestRef,
+        createdAtMs: entry.createdAtMs ?? existing?.createdAtMs ?? 0,
+      });
+    });
+    return Array.from(merged.values()).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  }, [legacyPendingRequests, requestInbox]);
   const isPendingSelf = useMemo(
-    () => Boolean(user && pendingRequests.find((p) => p.uid === user.uid)),
-    [user, pendingRequests],
+    () => Boolean((user && pendingRequests.find((p) => p.uid === user.uid)) || selfRequestEntry),
+    [user, pendingRequests, selfRequestEntry],
   );
   const activeMode = roomMode === 'shared' && roomId && firebaseAvailable ? 'shared' : 'local';
   const isOwner = useMemo(() => Boolean(user && roomInfo && roomInfo.ownerUid === user.uid), [user, roomInfo]);
@@ -1239,29 +1283,12 @@ export default function App() {
   const rateLimitRef = useRef({ pinAdd: 0, noteUpdate: 0, imageUpdate: 0 });
   const lastRoomUpdateRef = useRef(0);
   const pendingSentRef = useRef(false);
-  const lastPendingCountRef = useRef(0);
 
   // Reset refs when room changes
   useEffect(() => {
     lastRoomUpdateRef.current = 0;
     pendingSentRef.current = false;
   }, [roomId]);
-
-  useEffect(() => {
-    const currentPendingCount = pendingRequests.length;
-    if (!isOwner || activeMode !== 'shared') {
-      lastPendingCountRef.current = currentPendingCount;
-      setShowApprovalPanel(false);
-      return;
-    }
-    if (currentPendingCount > lastPendingCountRef.current) {
-      setShowApprovalPanel(true);
-    }
-    if (currentPendingCount === 0) {
-      setShowApprovalPanel(false);
-    }
-    lastPendingCountRef.current = currentPendingCount;
-  }, [pendingRequests.length, isOwner, activeMode]);
 
   const [openCategories, setOpenCategories] = useState({
     containers: true,
@@ -1327,14 +1354,14 @@ export default function App() {
       setApprovalMessage('');
       return;
     }
-    if (!isApproved && isPendingSelf) {
+    if (!isApproved && (isPendingSelf || joinRequestState === 'submitted')) {
       setApprovalMessage('オーナーの承認待ちです。承認されるまで操作できません。');
     } else if (!isApproved) {
-      setApprovalMessage('オーナーの承認が必要です。参加リクエストを送信しました。');
+      setApprovalMessage('オーナーの承認が必要です。申請ボタンで参加リクエストを送ってください。');
     } else {
       setApprovalMessage('');
     }
-  }, [activeMode, isOwner, isApproved, isPendingSelf]);
+  }, [activeMode, isOwner, isApproved, isPendingSelf, joinRequestState]);
   const availableIcons = [...userIconLibrary, ...PRESET_ICONS];
   const isMarkerVisible = (markerId) => markerVisibility[markerId] !== false;
   const markerCounts = useMemo(() => {
@@ -1484,11 +1511,12 @@ export default function App() {
   }, [markerIcons]);
 
   useEffect(() => {
+    if (!firebaseAvailable) {
+      setUser({ uid: 'local-demo' });
+      return undefined;
+    }
+    const unsubscribe = onIdTokenChanged(auth, setUser);
     const initAuth = async () => {
-      if (!firebaseAvailable) {
-        setUser({ uid: 'local-demo' });
-        return;
-      }
       try {
         if (initialAuthToken) {
           await signInWithCustomToken(auth, initialAuthToken);
@@ -1500,8 +1528,6 @@ export default function App() {
       }
     };
     initAuth();
-    if (!firebaseAvailable) return undefined;
-    const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, [firebaseAvailable, handleFirestoreError]);
 
@@ -1514,8 +1540,10 @@ export default function App() {
       setRoomId(roomParam);
       setRoomMode('shared');
       setRoomCreator(false);
+      setSharedSetupRole('member');
       setRoomInput(roomParam);
-      setModeChosen(true);
+      setModeChosen(false);
+      setShowSharedSetup(true);
       try {
         localStorage.setItem(LAST_SHARED_ROOM_KEY, roomParam);
       } catch {}
@@ -1542,10 +1570,32 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (roomMode !== 'shared' || !roomId || roomCreator || !user || !roomInfo) return;
+    const approved = roomInfo.ownerUid === user.uid || allowedUsers.includes(user.uid);
+    if (!approved) return;
+    setModeChosen(true);
+    setShowSharedSetup(false);
+    setModeError('');
+  }, [roomMode, roomId, roomCreator, user, roomInfo, allowedUsers]);
+
+  useEffect(() => {
+    const lockedMapId = roomInfo?.mapId;
+    if (roomMode !== 'shared' || !lockedMapId || !MAP_CONFIG[lockedMapId] || currentMap === lockedMapId) return;
+    setCurrentMap(lockedMapId);
+    setActionMessage(`このルームは「${MAP_CONFIG[lockedMapId]?.name || lockedMapId}」用です。マップを自動で合わせました。`);
+    setTimeout(() => setActionMessage(''), 2500);
+  }, [roomMode, roomInfo, currentMap]);
+
   // Room info (owner/allowed/pending)
   useEffect(() => {
     if (!firebaseAvailable || !roomId || !db) {
       setRoomInfo(null);
+      setRoomInfoLoading(false);
+      return undefined;
+    }
+    if (!user) {
+      setRoomInfoLoading(true);
       return undefined;
     }
     setRoomInfoLoading(true);
@@ -1562,7 +1612,90 @@ export default function App() {
       },
     );
     return () => unsub();
-  }, [roomId, firebaseAvailable, roomDocRef, handleFirestoreError]);
+  }, [roomId, firebaseAvailable, roomDocRef, handleFirestoreError, user]);
+
+  useEffect(() => {
+    if (!firebaseAvailable || !roomRequestsRef || !isOwner) {
+      setRequestInbox([]);
+      return undefined;
+    }
+    const unsub = onSnapshot(
+      query(roomRequestsRef),
+      (snap) => {
+        setRequestInbox(
+          snap.docs.map((entry) => {
+            const data = entry.data() || {};
+            const createdAtMs =
+              typeof data.createdAt?.toMillis === 'function'
+                ? data.createdAt.toMillis()
+                : data.createdAt?.seconds
+                  ? data.createdAt.seconds * 1000
+                  : 0;
+            return {
+              uid: data.uid || entry.id,
+              name: data.name || data.uid || entry.id,
+              requestRef: entry.ref,
+              createdAtMs,
+            };
+          }),
+        );
+      },
+      (err) => {
+        const handled = handleFirestoreError(err, 'Room requests subscribe error');
+        if (!handled) console.error('Room requests subscribe error', err);
+      },
+    );
+    return () => unsub();
+  }, [firebaseAvailable, roomRequestsRef, isOwner, handleFirestoreError]);
+
+  useEffect(() => {
+    if (!firebaseAvailable || !roomRequestsRef || !user || isOwner) {
+      setSelfRequestEntry(null);
+      return undefined;
+    }
+    const selfRequestRef = doc(roomRequestsRef, user.uid);
+    const unsub = onSnapshot(
+      selfRequestRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setSelfRequestEntry(null);
+          return;
+        }
+        const data = snap.data() || {};
+        const createdAtMs =
+          typeof data.createdAt?.toMillis === 'function'
+            ? data.createdAt.toMillis()
+            : data.createdAt?.seconds
+              ? data.createdAt.seconds * 1000
+              : 0;
+        setSelfRequestEntry({
+          uid: data.uid || snap.id,
+          name: data.name || data.uid || snap.id,
+          requestRef: snap.ref,
+          createdAtMs,
+        });
+      },
+      (err) => {
+        const handled = handleFirestoreError(err, 'Self request subscribe error');
+        if (!handled) console.error('Self request subscribe error', err);
+      },
+    );
+    return () => unsub();
+  }, [firebaseAvailable, roomRequestsRef, user, isOwner, handleFirestoreError]);
+
+  useEffect(() => {
+    if (isApproved) {
+      setJoinRequestState('idle');
+      return;
+    }
+    if (selfRequestEntry || isPendingSelf) {
+      setJoinRequestState('submitted');
+      return;
+    }
+    if (roomMode === 'shared' && roomId && !roomCreator) {
+      setJoinRequestState('idle');
+    }
+  }, [isApproved, selfRequestEntry, isPendingSelf, roomMode, roomId, roomCreator]);
 
   // Ensure room doc exists & owner is allowed
   useEffect(() => {
@@ -1573,6 +1706,7 @@ export default function App() {
           if (!roomCreator) return;
           await setDoc(roomDocRef, {
             roomId,
+            mapId: currentMap,
             ownerUid: user.uid,
             allowedUsers: [user.uid],
             pending: [],
@@ -1590,7 +1724,10 @@ export default function App() {
           const FIVE_MINUTES = 5 * 60 * 1000;
           if (timeSinceLastUpdate < FIVE_MINUTES) return;
 
-          const patch = { allowedUsers: roomInfo.allowedUsers?.includes(user.uid) ? roomInfo.allowedUsers : arrayUnion(user.uid) };
+          const patch = {
+            allowedUsers: roomInfo.allowedUsers?.includes(user.uid) ? roomInfo.allowedUsers : arrayUnion(user.uid),
+          };
+          if (!roomInfo.mapId) patch.mapId = currentMap;
           await updateDoc(roomDocRef, {
             ...patch,
             lastActiveAt: serverTimestamp(),
@@ -1606,44 +1743,7 @@ export default function App() {
       }
     };
     ensureRoom();
-  }, [roomId, user, roomInfo, firebaseAvailable, roomDocRef, roomCreator, handleFirestoreError]);
-
-  // If visitor is not approved, add to pending
-  useEffect(() => {
-    const sendPending = async () => {
-      if (!firebaseAvailable || !roomId || !db || !user) return;
-      if (!roomInfo) return;
-      if (roomInfo.ownerUid === user.uid) return;
-      const alreadyAllowed = roomInfo.allowedUsers?.includes(user.uid);
-      const pendingArr = roomInfo.pending || [];
-      const alreadyPending = pendingArr.some((p) => (typeof p === 'string' ? p === user.uid : p?.uid === user.uid));
-
-      // Reset pendingSentRef when user becomes allowed
-      if (alreadyAllowed) {
-        pendingSentRef.current = false;
-        return;
-      }
-
-      // Prevent duplicate pending requests
-      if (!alreadyAllowed && !alreadyPending && !pendingSentRef.current) {
-        try {
-          await updateDoc(roomDocRef, {
-            pending: arrayUnion({
-              uid: user.uid,
-              name: displayName || 'guest',
-            }),
-          });
-          pendingSentRef.current = true;
-        } catch (err) {
-          const handled = handleFirestoreError(err, 'Add pending failed');
-          if (handled) return;
-          console.error('Add pending failed', err);
-          setActionMessage('権限エラー: オーナーに許可を依頼できません。');
-        }
-      }
-    };
-    sendPending();
-  }, [roomId, user, roomInfo, firebaseAvailable, displayName, roomDocRef, handleFirestoreError]);
+  }, [roomId, user, roomInfo, firebaseAvailable, roomDocRef, roomCreator, currentMap, handleFirestoreError]);
 
   const centerMap = useCallback(() => {
     const containerW = windowWidth;
@@ -2615,6 +2715,7 @@ export default function App() {
 
   const applyRoomId = (nextRoomId, opts = {}) => {
     const { creator = false } = opts;
+    const roomChanged = nextRoomId !== roomId;
     setRoomId(nextRoomId);
     setRoomMode(nextRoomId ? 'shared' : 'local');
     setRoomCreator(Boolean(nextRoomId) && creator);
@@ -2626,10 +2727,17 @@ export default function App() {
       }
     } catch {}
     setSelectedPinId(null);
-    if (!nextRoomId) {
+    if (roomChanged) {
       setSharedPins([]);
       setSharedMapMeta({});
       setRoomInfo(null);
+      setRoomInfoLoading(Boolean(nextRoomId));
+      setRequestInbox([]);
+      setSelfRequestEntry(null);
+      setJoinRequestState('idle');
+    }
+    if (!nextRoomId) {
+      setRoomInfoLoading(false);
     }
     const params = new URLSearchParams(window.location.search);
     if (nextRoomId) params.set('room', nextRoomId);
@@ -2638,6 +2746,15 @@ export default function App() {
     params.set('profile', activeProfile);
     const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     window.history.replaceState({}, '', newUrl);
+  };
+
+  const connectOwnerRoom = (nextRoomId) => {
+    const normalizedRoomId = nextRoomId?.trim().toUpperCase();
+    if (!normalizedRoomId) return;
+    applyRoomId(normalizedRoomId, { creator: true });
+    setSharedSetupRole('owner');
+    setModeError('');
+    setShowSharedSetup(true);
   };
 
   const copyTextToClipboard = async (text) => {
@@ -2668,7 +2785,11 @@ export default function App() {
       }
       applyRoomId(activeRoomId, { creator: true });
     }
-    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${activeRoomId}`;
+    const params = new URLSearchParams();
+    params.set('room', activeRoomId);
+    params.set('map', currentMap);
+    params.set('profile', activeProfile);
+    const shareUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
     try {
       const copied = await copyTextToClipboard(shareUrl);
       if (copied) {
@@ -2757,10 +2878,10 @@ export default function App() {
     if (!isOwner || !roomDocRef) return;
     try {
       setActionMessage('許可中...');
-      await updateDoc(roomDocRef, {
-        allowedUsers: arrayUnion(entry.uid),
-        pending: arrayRemove(entry.raw),
-      });
+      const roomPatch = { allowedUsers: arrayUnion(entry.uid) };
+      if (entry.raw) roomPatch.pending = arrayRemove(entry.raw);
+      await updateDoc(roomDocRef, roomPatch);
+      if (entry.requestRef) await deleteDoc(entry.requestRef);
       setActionMessage(`許可しました: ${entry.name || entry.uid}`);
     } catch (err) {
       const handled = handleFirestoreError(err, 'Approve failed');
@@ -2775,9 +2896,12 @@ export default function App() {
     if (!isOwner || !roomDocRef) return;
     try {
       setActionMessage('拒否中...');
-      await updateDoc(roomDocRef, {
-        pending: arrayRemove(entry.raw),
-      });
+      if (entry.raw) {
+        await updateDoc(roomDocRef, {
+          pending: arrayRemove(entry.raw),
+        });
+      }
+      if (entry.requestRef) await deleteDoc(entry.requestRef);
       setActionMessage(`拒否しました: ${entry.name || entry.uid}`);
     } catch (err) {
       const handled = handleFirestoreError(err, 'Reject failed');
@@ -2792,12 +2916,18 @@ export default function App() {
     if (!isOwner || !roomDocRef || !pendingRequests.length) return;
     try {
       setActionMessage('一括許可中...');
-      await updateDoc(roomDocRef, {
-        allowedUsers: arrayUnion(...pendingRequests.map((entry) => entry.uid)),
-        pending: arrayRemove(...pendingRequests.map((entry) => entry.raw)),
-      });
+      const uniqueUids = [...new Set(pendingRequests.map((entry) => entry.uid).filter(Boolean))];
+      const legacyRawEntries = pendingRequests.map((entry) => entry.raw).filter(Boolean);
+      const roomPatch = { allowedUsers: arrayUnion(...uniqueUids) };
+      if (legacyRawEntries.length) roomPatch.pending = arrayRemove(...legacyRawEntries);
+      await updateDoc(roomDocRef, roomPatch);
+      await Promise.allSettled(
+        pendingRequests
+          .map((entry) => entry.requestRef)
+          .filter(Boolean)
+          .map((requestRef) => deleteDoc(requestRef)),
+      );
       setActionMessage(`${pendingRequests.length}件を許可しました`);
-      setShowApprovalPanel(false);
     } catch (err) {
       const handled = handleFirestoreError(err, 'Approve all failed');
       if (!handled) console.error('Approve all failed', err);
@@ -2811,11 +2941,19 @@ export default function App() {
     if (!isOwner || !roomDocRef || !pendingRequests.length) return;
     try {
       setActionMessage('一括拒否中...');
-      await updateDoc(roomDocRef, {
-        pending: arrayRemove(...pendingRequests.map((entry) => entry.raw)),
-      });
+      const legacyRawEntries = pendingRequests.map((entry) => entry.raw).filter(Boolean);
+      if (legacyRawEntries.length) {
+        await updateDoc(roomDocRef, {
+          pending: arrayRemove(...legacyRawEntries),
+        });
+      }
+      await Promise.allSettled(
+        pendingRequests
+          .map((entry) => entry.requestRef)
+          .filter(Boolean)
+          .map((requestRef) => deleteDoc(requestRef)),
+      );
       setActionMessage(`${pendingRequests.length}件を拒否しました`);
-      setShowApprovalPanel(false);
     } catch (err) {
       const handled = handleFirestoreError(err, 'Reject all failed');
       if (!handled) console.error('Reject all failed', err);
@@ -2839,28 +2977,461 @@ export default function App() {
     }
     setModeError('');
     setRoomMode('shared');
+    setSharedSetupRole(isOwner || roomCreator ? 'owner' : 'member');
     if (!roomInput && lastSharedRoom) setRoomInput(lastSharedRoom);
     setShowSharedSetup(true);
   };
 
-  const handleConfirmShared = () => {
-    const target = roomInput.trim() || generateRoomId();
-    const ownerRoomsCount = savedRooms.filter((r) => r.role === 'owner').length;
-    const isExistingOwner = savedRooms.some((r) => r.id === target && r.role === 'owner');
-    if (!isExistingOwner && ownerRoomsCount >= MAX_OWNER_ROOMS) {
-      setModeError(`オーナーとして保持できるルームは最大 ${MAX_OWNER_ROOMS} 件です。不要なルームを削除してください。`);
+  const handleConfirmShared = async () => {
+    const target = sharedSetupRole === 'owner' ? roomInput.trim() || generateRoomId() : roomInput.trim();
+    const mapName = MAP_CONFIG[currentMap]?.name || currentMap;
+    if (!displayName.trim()) {
+      setModeError('記載者名を入力してください');
       return;
     }
-    applyRoomId(target, { creator: true });
-    setRoomCreator(true);
-    setModeChosen(true);
-    setShowSharedSetup(false);
+    if (!target) {
+      setModeError(sharedSetupRole === 'owner' ? 'ルームIDを生成してください' : '参加するルームIDを入力してください');
+      return;
+    }
+    if (firebaseAvailable && db) {
+      try {
+        const targetRoomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', target);
+        const targetSnap = await getDoc(targetRoomRef);
+        if (targetSnap.exists()) {
+          const targetRoom = targetSnap.data() || {};
+          const lockedMapId = targetRoom.mapId;
+          if (lockedMapId && lockedMapId !== currentMap) {
+            const lockedMapName = MAP_CONFIG[lockedMapId]?.name || lockedMapId;
+            setModeError(`このルームIDは「${lockedMapName}」用です。現在の「${mapName}」では使えません。`);
+            if (sharedSetupRole === 'member' && MAP_CONFIG[lockedMapId]) {
+              setCurrentMap(lockedMapId);
+            }
+            return;
+          }
+          if (sharedSetupRole === 'owner' && targetRoom.ownerUid && user && targetRoom.ownerUid !== user.uid) {
+            setModeError('このルームIDは既に他の親が使用しています。別のルームIDを使ってください。');
+            return;
+          }
+        }
+      } catch (err) {
+        const handled = handleFirestoreError(err, 'Check target room failed');
+        if (!handled) console.error('Check target room failed', err);
+        setModeError('ルーム確認に失敗しました。少し待ってからやり直してください。');
+        return;
+      }
+    }
+    if (sharedSetupRole === 'owner') {
+      const ownerRoomsCount = savedRooms.filter((r) => r.role === 'owner').length;
+      const isExistingOwner = savedRooms.some((r) => r.id === target && r.role === 'owner');
+      if (!isExistingOwner && ownerRoomsCount >= MAX_OWNER_ROOMS) {
+        setModeError(`オーナーとして保持できるルームは最大 ${MAX_OWNER_ROOMS} 件です。不要なルームを削除してください。`);
+        return;
+      }
+      applyRoomId(target, { creator: true });
+      setRoomCreator(true);
+      setModeChosen(true);
+      setShowSharedSetup(false);
+      setModeError('');
+      return;
+    }
+    if (!firebaseAvailable || !db || !user) {
+      setModeError('共有申請の準備ができていません。Firebase接続を確認してください。');
+      return;
+    }
+    pendingSentRef.current = false;
+    try {
+      const targetRoomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', target);
+      const requestRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', target, 'requests', user.uid);
+      const targetSnap = await getDoc(targetRoomRef);
+      if (!targetSnap.exists()) {
+        setModeError('そのルームIDは存在しません。親が発行したIDを確認してください。');
+        return;
+      }
+      const targetRoom = targetSnap.data() || {};
+      const alreadyAllowed =
+        targetRoom.ownerUid === user.uid
+        || (Array.isArray(targetRoom.allowedUsers) && targetRoom.allowedUsers.includes(user.uid));
+      if (!alreadyAllowed) {
+        await setDoc(requestRef, {
+          uid: user.uid,
+          roomId: target,
+          name: displayName.trim() || 'guest',
+          createdAt: serverTimestamp(),
+        }, { merge: true });
+        pendingSentRef.current = true;
+        setJoinRequestState('submitted');
+      } else {
+        setJoinRequestState('idle');
+      }
+    } catch (err) {
+      const handled = handleFirestoreError(err, 'Create join request failed');
+      if (!handled) console.error('Create join request failed', err);
+      setModeError('参加申請の送信に失敗しました。もう一度試してください。');
+      return;
+    }
+    applyRoomId(target, { creator: false });
+    setRoomCreator(false);
+    setModeChosen(false);
+    setShowSharedSetup(true);
+    setModeError('');
   };
 
   const handleCancelShared = () => {
+    if (modeChosen) {
+      setShowSharedSetup(false);
+      return;
+    }
     setShowSharedSetup(false);
+    applyRoomId(null);
     setRoomMode('local');
+    setSharedSetupRole('member');
   };
+
+  const memberRoleLocked = !modeChosen && Boolean(roomId) && !roomCreator;
+  const joinTargetMissing = sharedSetupRole === 'member' && roomMode === 'shared' && roomId && !roomCreator && !roomInfoLoading && !roomInfo;
+  const hasJoinRequest = isPendingSelf || joinRequestState === 'submitted';
+  const isJoinWaiting =
+    sharedSetupRole === 'member'
+    && roomMode === 'shared'
+    && roomId
+    && !roomCreator
+    && !isApproved
+    && hasJoinRequest
+    && !joinTargetMissing;
+  const canManageRequests = activeMode === 'shared' && isOwner && roomId;
+  const openPendingInbox = () => {
+    if (!canManageRequests) return;
+    setSharedSetupRole('owner');
+    setShowRequestInbox(true);
+  };
+  useEffect(() => {
+    if (!canManageRequests) {
+      setShowRequestInbox(false);
+    }
+  }, [canManageRequests]);
+  const sharedSetupModal = showSharedSetup && (
+    <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4 z-[120]">
+      <div className="bg-white border border-gray-300 rounded-xl shadow-2xl max-w-lg w-full p-4 sm:p-5 space-y-3 text-gray-900 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-base sm:text-lg font-bold flex items-center gap-2">
+              <Users size={18} />
+              共有ルームに参加 / 発行
+              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 border border-gray-300">
+                {sharedSetupRole === 'owner' ? '親モード' : '子モード'}
+              </span>
+            </div>
+            <div className="text-xs sm:text-sm text-gray-600 mt-1">
+              {sharedSetupRole === 'owner'
+                ? '親としてルームを発行し、参加申請を承認します。'
+                : '共有リンクやルームIDから子として参加申請を送ります。'}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openPendingInbox}
+              disabled={!canManageRequests}
+              className={`relative inline-flex items-center justify-center rounded-lg border p-2 ${
+                canManageRequests
+                  ? 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+              }`}
+              title={canManageRequests ? '承認申請一覧へ移動' : '親ルーム開始後に申請箱を使えます'}
+            >
+              <Inbox size={16} />
+              <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {pendingRequests.length}
+              </span>
+            </button>
+            <button
+              onClick={handleCancelShared}
+              className="p-1 text-gray-500 hover:text-gray-800"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-gray-600">記載者名</label>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value.slice(0, 24))}
+            className="w-full bg-white border border-gray-400 rounded px-3 py-2.5 text-sm"
+            placeholder="名前を入力"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => {
+              if (memberRoleLocked) return;
+              setSharedSetupRole('owner');
+            }}
+            disabled={memberRoleLocked}
+            className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+              sharedSetupRole === 'owner'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            親として使う
+          </button>
+          <button
+            onClick={() => setSharedSetupRole('member')}
+            className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+              sharedSetupRole === 'member'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+            }`}
+          >
+            子として申請
+          </button>
+        </div>
+        {memberRoleLocked && (
+          <div className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+            共有リンクから開いたため、この画面では子として申請する流れに固定されています。
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <label className="text-xs text-gray-600">ルームID</label>
+          <input
+            value={roomInput}
+            onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
+            className="w-full bg-white border border-gray-400 rounded px-3 py-2.5 text-sm"
+            placeholder="ルームIDを入力"
+            disabled={Boolean(isJoinWaiting)}
+          />
+        </div>
+
+        {modeError && <div className="text-xs text-red-500">{modeError}</div>}
+
+        {isJoinWaiting && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3">
+            <div className="text-sm font-bold text-amber-900 mb-1">子として参加申請中</div>
+            <div className="text-xs text-amber-800">{approvalMessage || '親の承認を待っています。承認後に自動でマップへ移動します。'}</div>
+          </div>
+        )}
+        {joinTargetMissing && (
+          <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-3">
+            <div className="text-sm font-bold text-red-900 mb-1">親ルームが見つかりません</div>
+            <div className="text-xs text-red-800">指定されたルームIDが存在しないため、申請を送れません。親から共有されたリンクか正しいルームIDを確認してください。</div>
+          </div>
+        )}
+
+        {savedRooms.length > 0 && (
+          <div className="bg-gray-50 border border-gray-200 rounded p-3 space-y-2 max-h-48 overflow-y-auto">
+            <div className="text-xs text-gray-600">保存したルーム一覧</div>
+            {savedRooms.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 text-sm">
+                <span className={`text-[11px] ${r.role === 'owner' ? 'text-orange-600' : 'text-gray-500'}`}>
+                  {r.role === 'owner' ? 'owner' : 'member'}
+                </span>
+                <button
+                  onClick={() => {
+                    const nextRole = memberRoleLocked ? 'member' : r.role === 'owner' ? 'owner' : 'member';
+                    setRoomInput(r.id);
+                    setSharedSetupRole(nextRole);
+                    if (nextRole === 'owner') {
+                      connectOwnerRoom(r.id);
+                    }
+                  }}
+                  className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
+                >
+                  {r.id}
+                </button>
+                <button
+                  onClick={() => removeRoomFromHistory(r.id)}
+                  className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                >
+                  削除
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={() => {
+              if (memberRoleLocked) return;
+              const nextRoomId = generateRoomId();
+              setRoomInput(nextRoomId);
+              connectOwnerRoom(nextRoomId);
+            }}
+            disabled={memberRoleLocked}
+            className="flex-1 bg-gray-800 hover:bg-gray-700 text-sm text-white py-2.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            親ルームID発行
+          </button>
+          <button
+            onClick={() => {
+              if (lastSharedRoom) {
+                const savedRoom = savedRooms.find((r) => r.id === lastSharedRoom);
+                const nextRole = memberRoleLocked
+                  ? 'member'
+                  : savedRoom?.role === 'owner'
+                    ? 'owner'
+                    : 'member';
+                setSharedSetupRole(nextRole);
+                setRoomInput(lastSharedRoom);
+                if (nextRole === 'owner') {
+                  connectOwnerRoom(lastSharedRoom);
+                }
+              }
+            }}
+            className="flex-1 bg-gray-200 hover:bg-gray-300 text-sm text-gray-900 py-2.5 rounded disabled:opacity-40"
+            disabled={!lastSharedRoom}
+          >
+            前回のIDを使う
+          </button>
+        </div>
+
+        {canManageRequests && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-800">
+            参加申請の確認と承認は、右上のメールボックスから行います。
+          </div>
+        )}
+
+        {activeMode === 'shared' && isOwner && roomId && (
+          <div className="space-y-2 border-t border-gray-200 pt-3">
+            <div className="text-xs text-gray-500">このルームのピンを一括削除</div>
+            <button
+              onClick={deleteAllRoomPins}
+              disabled={isDeletingPins}
+              className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500 shadow disabled:opacity-50"
+            >
+              {isDeletingPins ? '削除中...' : 'ピンをすべて削除'}
+            </button>
+            <div className="text-[11px] text-gray-500">親だけが実行できます。削除は取り消せません。</div>
+            <div className="text-xs text-gray-500 pt-1">タイプを選んで削除</div>
+            <select
+              value={deleteTargetType}
+              onChange={(e) => setDeleteTargetType(e.target.value)}
+              className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900"
+            >
+              <option value="">タイプを選択</option>
+              {Object.values(mergedMarkers).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={deletePinsByType}
+              disabled={isDeletingPins || !deleteTargetType}
+              className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-700 hover:bg-red-600 text-white border border-red-600 shadow disabled:opacity-50"
+            >
+              {isDeletingPins ? '削除中...' : '選んだタイプのピンを削除'}
+            </button>
+            <div className="text-[11px] text-gray-500">選択したタイプのピンだけを削除します。</div>
+            <div className="text-xs text-gray-500 pt-1">ルームまるごと削除</div>
+            <button
+              onClick={deleteCurrentRoomData}
+              disabled={isDeletingPins}
+              className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-800 hover:bg-red-700 text-white border border-red-700 shadow disabled:opacity-50"
+            >
+              {isDeletingPins ? '削除中...' : 'ルームとデータを削除'}
+            </button>
+            <div className="text-[11px] text-gray-500">ピン/マップメタ/ルーム情報を削除します。</div>
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end pt-2">
+          <button
+            onClick={handleCancelShared}
+            className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
+          >
+            {modeChosen ? '閉じる' : 'キャンセル'}
+          </button>
+          {!isJoinWaiting && (
+            <button
+              onClick={handleConfirmShared}
+              className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded text-white font-semibold"
+            >
+              {sharedSetupRole === 'owner' ? '親として開始' : '子として申請'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  const requestInboxModal = showRequestInbox && canManageRequests && (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-4 sm:p-5 text-white shadow-2xl space-y-3 max-h-[80vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-lg font-bold">
+              <Inbox size={18} />
+              承認申請メールボックス
+            </div>
+            <div className="mt-1 text-xs text-gray-400">
+              ルーム {roomId} に届いた参加申請をここで確認します。
+            </div>
+          </div>
+          <button
+            onClick={() => setShowRequestInbox(false)}
+            className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 hover:bg-gray-700 hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-gray-200">未対応の申請</div>
+          <div className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
+            {pendingRequests.length}件
+          </div>
+        </div>
+
+        {pendingRequests.length > 0 ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={approveAllPending}
+                className="rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-600"
+              >
+                全員許可
+              </button>
+              <button
+                onClick={rejectAllPending}
+                className="rounded-lg bg-red-800 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+              >
+                全員拒否
+              </button>
+            </div>
+            <div className="space-y-2">
+              {pendingRequests.map((p) => (
+                <div key={p.uid} className="rounded-xl border border-gray-700 bg-gray-800/80 p-3">
+                  <div className="text-sm font-semibold text-white break-all">{p.name || p.uid}</div>
+                  <div className="mt-1 text-[11px] text-gray-400 break-all">{p.uid}</div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => approvePending(p)}
+                      className="flex-1 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white hover:bg-green-600"
+                    >
+                      許可
+                    </button>
+                    <button
+                      onClick={() => rejectPending(p)}
+                      className="flex-1 rounded-lg bg-red-800 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      拒否
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl border border-gray-700 bg-gray-800/80 px-4 py-8 text-center text-sm text-gray-400">
+            現在の承認申請はありません
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   // Mode Selection Screen
   if (!modeChosen) {
@@ -2914,153 +3485,8 @@ export default function App() {
             </button>
           </div>
         </div>
-        {showSharedSetup && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-white border border-gray-300 rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-5 space-y-3 text-gray-900">
-              <div className="text-base sm:text-lg font-bold flex items-center gap-2">
-                <Users size={18} /> 共有ルームに参加 / 発行
-              </div>
-              <div className="text-xs sm:text-sm text-gray-600">
-                ルームIDを入力するか、発行ボタンで新しいIDを生成してください。
-              </div>
-              <input
-                value={roomInput}
-                onChange={(e) => setRoomInput(e.target.value)}
-                className="w-full bg-white border border-gray-400 rounded px-3 py-2.5 text-sm"
-                placeholder="ルームIDを入力"
-              />
-              {savedRooms.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded p-3 space-y-2 max-h-48 overflow-y-auto">
-                  <div className="text-xs text-gray-600">保存したルーム一覧</div>
-                  {savedRooms
-                    .filter((r) => r.role === 'owner')
-                    .map((r) => (
-                      <div key={r.id} className="flex items-center gap-2 text-sm">
-                        <span className="text-[11px] text-orange-600">owner</span>
-                        <button
-                          onClick={() => setRoomInput(r.id)}
-                          className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
-                        >
-                          {r.id}
-                        </button>
-                        <button
-                          onClick={() => removeRoomFromHistory(r.id)}
-                          className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
-                        >
-                          削除
-                        </button>
-                      </div>
-                    ))}
-                  {savedRooms.filter((r) => r.role !== 'owner').length > 0 && (
-                    <div className="border-t border-gray-200 pt-2 space-y-1">
-                      {savedRooms
-                        .filter((r) => r.role !== 'owner')
-                        .map((r) => (
-                          <div key={r.id} className="flex items-center gap-2 text-sm">
-                            <span className="text-[11px] text-gray-500">member</span>
-                            <button
-                              onClick={() => setRoomInput(r.id)}
-                              className="flex-1 text-left px-2 py-1 rounded border border-gray-300 hover:border-gray-500"
-                            >
-                              {r.id}
-                            </button>
-                            <button
-                              onClick={() => removeRoomFromHistory(r.id)}
-                              className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
-                            >
-                              削除
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  onClick={() => setRoomInput(generateRoomId())}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-sm text-white py-2.5 rounded"
-                >
-                  ルームID発行
-                </button>
-                <button
-                  onClick={() => {
-                    if (lastSharedRoom) setRoomInput(lastSharedRoom);
-                  }}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-sm text-gray-900 py-2.5 rounded disabled:opacity-40"
-                  disabled={!lastSharedRoom}
-                >
-                  前回のIDを使う
-                </button>
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  onClick={handleCancelShared}
-                  className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={handleConfirmShared}
-                  className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded text-white font-semibold"
-                >
-                  開始する
-                </button>
-              </div>
-
-              {activeMode === 'shared' && isOwner && roomId && (
-                <div className="mt-4 space-y-2 border-t border-gray-800 pt-3">
-                  <div className="text-xs text-gray-400">このルームのピンを一括削除</div>
-                  <button
-                    onClick={deleteAllRoomPins}
-                    disabled={isDeletingPins}
-                    className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500 shadow disabled:opacity-50"
-                  >
-                    {isDeletingPins ? '削除中...' : 'ピンをすべて削除'}
-                  </button>
-                  <div className="text-[11px] text-gray-500">
-                    オーナーだけが実行できます。削除は取り消せないのでご注意ください。
-                  </div>
-                  <div className="text-xs text-gray-400 pt-1">タイプを選んで削除</div>
-                  <select
-                    value={deleteTargetType}
-                    onChange={(e) => setDeleteTargetType(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white"
-                  >
-                    <option value="">タイプを選択</option>
-                    {Object.values(mergedMarkers).map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={deletePinsByType}
-                    disabled={isDeletingPins || !deleteTargetType}
-                    className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-700 hover:bg-red-600 text-white border border-red-600 shadow disabled:opacity-50"
-                  >
-                    {isDeletingPins ? '削除中...' : '選んだタイプのピンを削除'}
-                  </button>
-                  <div className="text-[11px] text-gray-500">
-                    選択したタイプのピンだけを削除します。確認のうえ実行してください。
-                  </div>
-                  <div className="text-xs text-gray-400 pt-1">ルームまるごと削除</div>
-                  <button
-                    onClick={deleteCurrentRoomData}
-                    disabled={isDeletingPins}
-                    className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-800 hover:bg-red-700 text-white border border-red-700 shadow disabled:opacity-50"
-                  >
-                    {isDeletingPins ? '削除中...' : 'ルームとデータを削除'}
-                  </button>
-                  <div className="text-[11px] text-gray-500">
-                    ピン/マップメタ/ルーム情報を削除し、履歴からも外します。元に戻せません。
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        )}
+        {sharedSetupModal}
+        {requestInboxModal}
       </div>
     );
   }
@@ -3081,6 +3507,12 @@ export default function App() {
           {firebaseBlockReason || firebaseQuotaMessage}
         </div>
       )}
+
+      {roomMode === 'shared' && !useFirebase && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 max-w-[min(92vw,48rem)] bg-red-500 text-white text-xs font-bold px-4 py-2 rounded shadow-lg text-center">
+          {realtimeDisabledMessage}
+        </div>
+      )}
       
       {activeMode === 'shared' && !isOwner && !isApproved && (
         <div className="absolute inset-0 z-40 bg-black/70 flex flex-col items-center justify-center text-center px-6">
@@ -3099,13 +3531,15 @@ export default function App() {
       
       {!useFirebase && (
         <div className="absolute top-14 right-2 z-50 bg-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow">
-          Firebase disabled
+          共有同期OFF
         </div>
       )}
       
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
       <input type="file" ref={iconFileInputRef} className="hidden" accept="image/*" onChange={handleIconFileSelect} />
       <input type="file" ref={newMarkerIconInputRef} className="hidden" accept="image/*" onChange={handleNewMarkerUpload} />
+      {sharedSetupModal}
+      {requestInboxModal}
 
       {/* Header */}
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-2 sm:px-4 z-30 shadow-lg shrink-0">
@@ -3208,15 +3642,11 @@ export default function App() {
           </button>
           
           <button
-            onClick={() => setSelectedTool(selectedTool === 'custom_pin' ? 'move' : 'custom_pin')}
-            className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded border transition-all ${
-              selectedTool === 'custom_pin'
-                ? 'bg-orange-600 text-white border-orange-400'
-                : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
-            }`}
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-1 px-3 py-1 text-xs font-bold rounded border transition-all bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700"
           >
-            <MapPin size={14} />
-            Drop Pin
+            <Settings size={14} />
+            設定
           </button>
         </div>
 
@@ -3247,103 +3677,27 @@ export default function App() {
           </select>
 
           <button
-            onClick={() => setSelectedTool(selectedTool === 'custom_pin' ? 'move' : 'custom_pin')}
-            className={`flex items-center gap-1 px-2 py-1.5 text-xs font-bold rounded border transition-all ${
-              selectedTool === 'custom_pin'
-                ? 'bg-orange-600 text-white border-orange-400'
-                : 'bg-gray-800 text-gray-300 border-gray-700'
-            }`}
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs font-bold rounded border transition-all bg-gray-800 text-gray-300 border-gray-700"
           >
-            <MapPin size={14} />
+            <Settings size={14} />
           </button>
         </div>
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
-          {activeMode === 'shared' && isOwner && roomId && (
-            <div className="relative">
-              <button
-                onClick={() => setShowApprovalPanel((prev) => !prev)}
-                className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-xs font-semibold border shadow ${
-                  pendingRequests.length > 0
-                    ? 'bg-amber-500 hover:bg-amber-400 text-black border-amber-300'
-                    : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700'
-                }`}
-              >
-                <Users size={14} />
-                <span className="hidden sm:inline">承認申請</span>
-                <span
-                  className={`min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    pendingRequests.length > 0 ? 'bg-black text-amber-300' : 'bg-gray-700 text-gray-300'
-                  }`}
-                >
-                  {pendingRequests.length}
-                </span>
-              </button>
-              {showApprovalPanel && (
-                <div className={`absolute right-0 top-full mt-2 z-50 rounded-xl border shadow-2xl bg-slate-900/95 border-slate-700 p-3 ${isMobile ? 'w-[min(22rem,calc(100vw-1rem))]' : 'w-80'}`}>
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div>
-                      <div className="text-sm font-bold text-white">承認申請</div>
-                      <div className="text-[11px] text-slate-400">共有ルーム参加リクエストをまとめて管理します</div>
-                    </div>
-                    <button
-                      onClick={() => setShowApprovalPanel(false)}
-                      className="p-1 text-slate-400 hover:text-white"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  {pendingRequests.length > 0 ? (
-                    <>
-                      <div className="flex gap-2 mb-3">
-                        <button
-                          onClick={approveAllPending}
-                          className="flex-1 rounded bg-green-700 hover:bg-green-600 text-white text-xs font-semibold py-2"
-                        >
-                          全員許可
-                        </button>
-                        <button
-                          onClick={rejectAllPending}
-                          className="flex-1 rounded bg-red-800 hover:bg-red-700 text-white text-xs font-semibold py-2"
-                        >
-                          全員拒否
-                        </button>
-                      </div>
-                      <div className="space-y-2 max-h-64 overflow-auto pr-1">
-                        {pendingRequests.map((p) => (
-                          <div key={p.uid} className="rounded-lg border border-slate-700 bg-slate-950/80 p-2.5">
-                            <div className="text-xs font-semibold text-white break-all">{p.name || p.uid}</div>
-                            <div className="text-[10px] text-slate-400 break-all mb-2">{p.uid}</div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => approvePending(p)}
-                                className="flex-1 rounded bg-green-700 hover:bg-green-600 text-white text-[11px] font-semibold py-1.5"
-                              >
-                                許可
-                              </button>
-                              <button
-                                onClick={() => rejectPending(p)}
-                                className="flex-1 rounded bg-red-800 hover:bg-red-700 text-white text-[11px] font-semibold py-1.5"
-                              >
-                                拒否
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-4 text-center text-xs text-slate-400">
-                      現在の承認申請はありません
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          {canManageRequests && (
+            <button
+              onClick={openPendingInbox}
+              className="relative inline-flex items-center justify-center rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-200 hover:bg-gray-700"
+              title="承認申請メールボックス"
+            >
+              <Inbox size={16} />
+              <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {pendingRequests.length}
+              </span>
+            </button>
           )}
-
           {/* Desktop Controls */}
           <div className="hidden md:flex items-center gap-2">
             <div className="flex items-center gap-2 bg-gray-800 rounded px-2 py-1 border border-gray-700">
@@ -3433,12 +3787,13 @@ export default function App() {
                     setModeChosen(true);
                     return;
                   }
+                  setSharedSetupRole(isOwner || roomCreator ? 'owner' : 'member');
                   setShowSharedSetup(true);
                 }}
                 className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 text-gray-200 rounded hover:bg-gray-700 disabled:opacity-50"
                 disabled={roomMode === "local"}
               >
-                接続
+                {pendingRequests.length > 0 && isOwner ? `管理(${pendingRequests.length})` : '管理'}
               </button>
             </div>
             
@@ -3602,6 +3957,10 @@ export default function App() {
           modeChosen={modeChosen}
           applyRoomId={applyRoomId}
           setShowSharedSetup={setShowSharedSetup}
+          setSharedSetupRole={setSharedSetupRole}
+          roomCreator={roomCreator}
+          isOwner={isOwner}
+          pendingCount={pendingRequests.length}
           triggerFileUpload={triggerFileUpload}
         />
 
@@ -3832,27 +4191,11 @@ export default function App() {
                         />
                       </div>
                     </div>
-                    <button
-                      onClick={() => setShowSettings(true)}
-                      className="bg-gray-800 hover:bg-gray-700 text-gray-200 p-2 rounded-full shadow-lg border border-gray-700"
-                    >
-                      <Settings size={18} />
-                    </button>
                   </>
                 )}
               </div>
             </div>
           </div>
-
-          {/* Mobile Settings Button */}
-          {isMobile && (
-            <button
-              onClick={() => setShowSettings(true)}
-              className="absolute bottom-20 right-2 z-10 bg-gray-800 hover:bg-gray-700 text-gray-200 p-2.5 rounded-full shadow-lg border border-gray-700"
-            >
-              <Settings size={18} />
-            </button>
-          )}
         </div>
       </div>
 

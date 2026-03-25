@@ -5,18 +5,31 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid != null;
     }
 
+    function roomPath(appId, roomId) {
+      return /databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId);
+    }
+
     function roomDoc(appId, roomId) {
-      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId));
+      return get(roomPath(appId, roomId));
     }
 
-    function isRoomOwner(room) {
-      return isSignedIn() && room.exists() && room.data.ownerUid == request.auth.uid;
+    function roomExists(appId, roomId) {
+      return exists(roomPath(appId, roomId));
     }
 
-    function isRoomMember(room) {
+    function isRoomOwner(appId, roomId) {
       return isSignedIn()
-        && room.exists()
-        && (room.data.ownerUid == request.auth.uid || room.data.allowedUsers.hasAny([request.auth.uid]));
+        && roomExists(appId, roomId)
+        && roomDoc(appId, roomId).data.ownerUid == request.auth.uid;
+    }
+
+    function isRoomMember(appId, roomId) {
+      return isSignedIn()
+        && roomExists(appId, roomId)
+        && (
+          roomDoc(appId, roomId).data.ownerUid == request.auth.uid
+          || roomDoc(appId, roomId).data.allowedUsers.hasAny([request.auth.uid])
+        );
     }
 
     function isRoomCollection(collectionName, suffix) {
@@ -45,20 +58,57 @@ service cloud.firestore {
         && (!('profiles' in request.resource.data) || request.resource.data.profiles.size() <= 20);
     }
 
+    function joinRequestIsValid(roomId, requestUid) {
+      return request.resource.data.uid == request.auth.uid
+        && requestUid == request.auth.uid
+        && request.resource.data.roomId == roomId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 24
+        && request.resource.data.createdAt is timestamp;
+    }
+
     // ルームドキュメント
     match /artifacts/{appId}/public/data/rooms/{roomId} {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
-        && !exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/rooms/$(roomId))
+        && !roomExists(appId, roomId)
         && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.mapId is string
         && request.resource.data.allowedUsers.size() == 1
         && request.resource.data.allowedUsers.hasAny([request.auth.uid]);
 
-      allow update: if isRoomOwner(resource)
-        && request.resource.data.ownerUid == resource.data.ownerUid; // オーナーのすり替え防止
+      allow update: if isRoomOwner(appId, roomId)
+        && request.resource.data.ownerUid == resource.data.ownerUid // オーナーのすり替え防止
+        && (
+          (
+            !('mapId' in resource.data)
+            && request.resource.data.mapId is string
+          )
+          || (
+            resource.data.mapId is string
+            && request.resource.data.mapId == resource.data.mapId
+          )
+        );
 
-      allow delete: if isRoomOwner(resource);
+      allow delete: if isRoomOwner(appId, roomId);
+    }
+
+    // 参加申請 rooms/{roomId}/requests/{uid}
+    match /artifacts/{appId}/public/data/rooms/{roomId}/requests/{requestUid} {
+      allow read: if isSignedIn()
+        && roomExists(appId, roomId)
+        && (roomDoc(appId, roomId).data.ownerUid == request.auth.uid || requestUid == request.auth.uid);
+
+      allow create, update: if isSignedIn()
+        && roomExists(appId, roomId)
+        && roomDoc(appId, roomId).data.ownerUid != request.auth.uid
+        && !roomDoc(appId, roomId).data.allowedUsers.hasAny([request.auth.uid])
+        && joinRequestIsValid(roomId, requestUid);
+
+      allow delete: if isSignedIn()
+        && roomExists(appId, roomId)
+        && (roomDoc(appId, roomId).data.ownerUid == request.auth.uid || requestUid == request.auth.uid);
     }
 
     // ピン {roomId}_pins
@@ -67,19 +117,19 @@ service cloud.firestore {
         && isRoomCollection(collectionName, '_pins')
         && resource.data.roomId is string
         && collectionMatchesRoom(collectionName, resource.data.roomId, '_pins')
-        && isRoomMember(roomDoc(appId, resource.data.roomId));
+        && isRoomMember(appId, resource.data.roomId);
 
       allow create: if isSignedIn()
         && isRoomCollection(collectionName, '_pins')
         && pinDataIsValid(collectionName)
-        && isRoomMember(roomDoc(appId, request.resource.data.roomId));
+        && isRoomMember(appId, request.resource.data.roomId);
 
       allow update, delete: if isSignedIn()
         && isRoomCollection(collectionName, '_pins')
         && resource.data.roomId is string
         && collectionMatchesRoom(collectionName, resource.data.roomId, '_pins')
-        && isRoomMember(roomDoc(appId, resource.data.roomId))
-        && (isRoomOwner(roomDoc(appId, resource.data.roomId)) || resource.data.createdBy == request.auth.uid);
+        && isRoomMember(appId, resource.data.roomId)
+        && (isRoomOwner(appId, resource.data.roomId) || resource.data.createdBy == request.auth.uid);
     }
 
     // マップメタ {roomId}_mapmeta
@@ -88,12 +138,12 @@ service cloud.firestore {
         && isRoomCollection(collectionName, '_mapmeta')
         && resource.data.roomId is string
         && collectionMatchesRoom(collectionName, resource.data.roomId, '_mapmeta')
-        && isRoomMember(roomDoc(appId, resource.data.roomId));
+        && isRoomMember(appId, resource.data.roomId);
 
       allow create, update: if isSignedIn()
         && isRoomCollection(collectionName, '_mapmeta')
         && mapMetaIsValid(collectionName)
-        && isRoomMember(roomDoc(appId, request.resource.data.roomId));
+        && isRoomMember(appId, request.resource.data.roomId);
 
       allow delete: if false; // map meta の削除はクライアントから不可
     }
