@@ -79,7 +79,7 @@ service cloud.firestore {
         && request.resource.data.allowedUsers.hasAny([request.auth.uid]);
 
       allow update: if isRoomOwner(appId, roomId)
-        && request.resource.data.ownerUid == resource.data.ownerUid // オーナーのすり替え防止
+        && request.resource.data.ownerUid == resource.data.ownerUid
         && (
           (
             !('mapId' in resource.data)
@@ -96,9 +96,15 @@ service cloud.firestore {
 
     // 参加申請 rooms/{roomId}/requests/{uid}
     match /artifacts/{appId}/public/data/rooms/{roomId}/requests/{requestUid} {
-      allow read: if isSignedIn()
+      // 単一ドキュメント取得: オーナーまたは申請者本人
+      allow get: if isSignedIn()
         && roomExists(appId, roomId)
         && (roomDoc(appId, roomId).data.ownerUid == request.auth.uid || requestUid == request.auth.uid);
+
+      // コレクションクエリ: オーナーのみ
+      allow list: if isSignedIn()
+        && roomExists(appId, roomId)
+        && roomDoc(appId, roomId).data.ownerUid == request.auth.uid;
 
       allow create, update: if isSignedIn()
         && roomExists(appId, roomId)
@@ -113,10 +119,16 @@ service cloud.firestore {
 
     // ピン {roomId}_pins
     match /artifacts/{appId}/public/data/{collectionName}/{pinId} {
-      allow read: if isSignedIn()
+      // 単一ドキュメント取得
+      allow get: if isSignedIn()
         && isRoomCollection(collectionName, '_pins')
         && resource.data.roomId is string
         && collectionMatchesRoom(collectionName, resource.data.roomId, '_pins')
+        && isRoomMember(appId, resource.data.roomId);
+
+      // コレクションクエリ: where('roomId', '==', roomId) 必須
+      allow list: if isSignedIn()
+        && isRoomCollection(collectionName, '_pins')
         && isRoomMember(appId, resource.data.roomId);
 
       allow create: if isSignedIn()
@@ -134,10 +146,16 @@ service cloud.firestore {
 
     // マップメタ {roomId}_mapmeta
     match /artifacts/{appId}/public/data/{collectionName}/{docId} {
-      allow read: if isSignedIn()
+      // 単一ドキュメント取得
+      allow get: if isSignedIn()
         && isRoomCollection(collectionName, '_mapmeta')
         && resource.data.roomId is string
         && collectionMatchesRoom(collectionName, resource.data.roomId, '_mapmeta')
+        && isRoomMember(appId, resource.data.roomId);
+
+      // コレクションクエリ: where('roomId', '==', roomId) 必須
+      allow list: if isSignedIn()
+        && isRoomCollection(collectionName, '_mapmeta')
         && isRoomMember(appId, resource.data.roomId);
 
       allow create, update: if isSignedIn()
@@ -145,7 +163,7 @@ service cloud.firestore {
         && mapMetaIsValid(collectionName)
         && isRoomMember(appId, request.resource.data.roomId);
 
-      allow delete: if false; // map meta の削除はクライアントから不可
+      allow delete: if false;
     }
 
     // その他のパスは拒否
