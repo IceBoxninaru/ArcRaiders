@@ -610,7 +610,7 @@ const MobileSidebar = ({
   markerCounts,
   isMarkerVisible,
   selectedTool,
-  setSelectedTool,
+  selectPlacementTool,
   setMarkerVisibility,
   triggerIconUpload,
   showAllMarkers,
@@ -647,12 +647,12 @@ const MobileSidebar = ({
       
       {/* Sidebar */}
       <div
-        className={`fixed top-0 left-0 h-full w-[min(88vw,24rem)] bg-gray-900/98 backdrop-blur-lg border-r border-gray-800 z-50 transform transition-transform duration-300 ease-in-out md:hidden
+        className={`fixed top-0 left-0 h-full w-screen max-w-[26rem] overflow-hidden bg-gray-900/98 backdrop-blur-lg border-r border-gray-800 z-50 transform transition-transform duration-300 ease-in-out md:hidden [touch-action:pan-y]
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <div className="flex flex-col h-full pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+        <div className="flex h-full min-h-0 flex-col pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           {/* Header */}
-          <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+          <div className="shrink-0 p-4 border-b border-gray-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldAlert className="text-orange-500 w-5 h-5" />
               <div>
@@ -666,7 +666,7 @@ const MobileSidebar = ({
           </div>
 
           {/* Search & Controls */}
-          <div className="p-4 border-b border-gray-800 space-y-3">
+          <div className="shrink-0 p-4 border-b border-gray-800 space-y-3">
             <div className="rounded-2xl border border-gray-800 bg-black/30 px-3 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">現在の操作</div>
               {activeMobileMarker ? (
@@ -684,7 +684,7 @@ const MobileSidebar = ({
                     </div>
                   </div>
                   <button
-                    onClick={() => setSelectedTool('move')}
+                    onClick={() => selectPlacementTool('move')}
                     className="rounded-full border border-gray-700 bg-gray-800 px-2.5 py-1 text-[11px] font-semibold text-gray-300"
                   >
                     解除
@@ -816,7 +816,7 @@ const MobileSidebar = ({
             
             <div className="flex gap-2">
               <button
-                onClick={() => setSelectedTool('move')}
+                onClick={() => selectPlacementTool('move')}
                 className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
                   selectedTool === 'move'
                     ? 'bg-gray-700 text-white border-gray-500'
@@ -851,7 +851,7 @@ const MobileSidebar = ({
           </div>
 
           {/* Marker List */}
-          <div className="flex-1 overflow-y-auto px-3 pb-3 pt-2 space-y-2">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 pb-3 pt-2 space-y-2 [touch-action:pan-y]">
             {Object.entries(MARKER_CATEGORIES).map(([catKey, category]) => (
               <div key={catKey} className="rounded overflow-hidden">
                 <div className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 bg-gray-800/50 text-xs font-bold text-gray-300">
@@ -887,7 +887,7 @@ const MobileSidebar = ({
                             role="button"
                             tabIndex={0}
                             onClick={() => {
-                              setSelectedTool(marker.id);
+                              selectPlacementTool(marker.id);
                               onClose();
                             }}
                             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
@@ -1434,6 +1434,12 @@ export default function App() {
       icon: marker?.icon || MapPin,
     };
   }, [selectedTool, mergedMarkers, mergedCategories, markerCounts]);
+
+  const selectPlacementTool = useCallback((toolId) => {
+    setSelectedPinId(null);
+    setActionMessage('');
+    setSelectedTool(toolId);
+  }, []);
 
   useEffect(() => {
     if (!firebaseBlocked) return;
@@ -2121,7 +2127,7 @@ export default function App() {
 
     if (selectedPinId) {
       setSelectedPinId(null);
-      return;
+      if (selectedTool === 'move') return;
     }
 
     if (selectedTool === 'move') return;
@@ -2183,8 +2189,6 @@ export default function App() {
           createdByName: displayName || '匿名',
         },
       ]);
-      setSelectedPinId(localId);
-      setSelectedTool('move');
       rateLimitRef.current.pinAdd = now;
       return;
     }
@@ -2208,8 +2212,6 @@ export default function App() {
         createdBy: user.uid,
         createdByName: displayName || '匿名',
       });
-      setSelectedPinId(docRef.id);
-      setSelectedTool('move');
       rateLimitRef.current.pinAdd = now;
     } catch (err) {
       const handled = handleFirestoreError(err, 'Error adding pin');
@@ -3892,7 +3894,7 @@ export default function App() {
             
             <div className="flex gap-2">
               <button
-                onClick={() => setSelectedTool('move')}
+                onClick={() => selectPlacementTool('move')}
                 className={`flex-1 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition-colors border ${
                   selectedTool === 'move'
                     ? 'bg-gray-700 text-white border-gray-500'
@@ -3959,11 +3961,11 @@ export default function App() {
                             key={marker.id}
                             role="button"
                             tabIndex={0}
-                            onClick={() => setSelectedTool(marker.id)}
+                            onClick={() => selectPlacementTool(marker.id)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
-                                setSelectedTool(marker.id);
+                                selectPlacementTool(marker.id);
                               }
                             }}
                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-all cursor-pointer ${
@@ -4010,7 +4012,7 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div className="border-t border-gray-800 px-4 pt-3 text-[11px] text-gray-500">
+          <div className="shrink-0 border-t border-gray-800 px-4 pt-3 text-[11px] text-gray-500">
             <div className="rounded-2xl border border-gray-800 bg-black/20 px-3 py-2 text-center">
               Room: {roomId || 'ローカル'}
             </div>
@@ -4039,7 +4041,7 @@ export default function App() {
           markerCounts={markerCounts}
           isMarkerVisible={isMarkerVisible}
           selectedTool={selectedTool}
-          setSelectedTool={setSelectedTool}
+          selectPlacementTool={selectPlacementTool}
           setMarkerVisibility={setMarkerVisibility}
           triggerIconUpload={triggerIconUpload}
           showAllMarkers={showAllMarkers}
