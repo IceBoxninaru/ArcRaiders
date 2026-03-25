@@ -1680,7 +1680,7 @@ export default function App() {
       return undefined;
     }
     const unsub = onSnapshot(
-      query(roomRequestsRef),
+      query(roomRequestsRef, where('roomId', '==', roomId)),
       (snap) => {
         setRequestInbox(
           snap.docs.map((entry) => {
@@ -1853,7 +1853,10 @@ export default function App() {
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_pins`;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+    const q = query(
+      collection(db, 'artifacts', appId, 'public', 'data', collectionName),
+      where('roomId', '==', roomId),
+    );
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -1874,7 +1877,10 @@ export default function App() {
   useEffect(() => {
     if (!canSync || activeMode !== 'shared' || !auth || !db || !user) return;
     const collectionName = `${roomId}_mapmeta`;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+    const q = query(
+      collection(db, 'artifacts', appId, 'public', 'data', collectionName),
+      where('roomId', '==', roomId),
+    );
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -2250,7 +2256,12 @@ export default function App() {
     setActionMessage('削除中...');
     try {
       const collectionName = `${roomId}_pins`;
-      const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', collectionName));
+      const snap = await getDocs(
+        query(
+          collection(db, 'artifacts', appId, 'public', 'data', collectionName),
+          where('roomId', '==', roomId),
+        ),
+      );
       const batchSize = 400;
       const docs = snap.docs;
       for (let i = 0; i < docs.length; i += batchSize) {
@@ -2293,7 +2304,11 @@ export default function App() {
     try {
       const collectionName = `${roomId}_pins`;
       const snap = await getDocs(
-        query(collection(db, 'artifacts', appId, 'public', 'data', collectionName), where('type', '==', targetType)),
+        query(
+          collection(db, 'artifacts', appId, 'public', 'data', collectionName),
+          where('roomId', '==', roomId),
+          where('type', '==', targetType),
+        ),
       );
       const docs = snap.docs;
       const batchSize = 400;
@@ -2328,8 +2343,18 @@ export default function App() {
     try {
       const pinsCol = `${roomId}_pins`;
       const mapmetaCol = `${roomId}_mapmeta`;
-      const pinsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', pinsCol));
-      const metaSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', mapmetaCol));
+      const pinsSnap = await getDocs(
+        query(
+          collection(db, 'artifacts', appId, 'public', 'data', pinsCol),
+          where('roomId', '==', roomId),
+        ),
+      );
+      const metaSnap = await getDocs(
+        query(
+          collection(db, 'artifacts', appId, 'public', 'data', mapmetaCol),
+          where('roomId', '==', roomId),
+        ),
+      );
       const batchSize = 400;
       const eraseDocs = async (docs) => {
         for (let i = 0; i < docs.length; i += batchSize) {
