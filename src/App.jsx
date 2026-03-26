@@ -3207,15 +3207,12 @@ export default function App() {
           <div>
             <div className="text-base sm:text-lg font-bold flex items-center gap-2">
               <Users size={18} />
-              共有ルームに参加 / 発行
-              <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 border border-gray-300">
-                {sharedSetupRole === 'owner' ? '親モード' : '子モード'}
-              </span>
+              共有ルーム設定
             </div>
             <div className="text-xs sm:text-sm text-gray-600 mt-1">
               {sharedSetupRole === 'owner'
-                ? '親としてルームを発行し、参加申請を承認します。'
-                : '共有リンクやルームIDから子として参加申請を送ります。'}
+                ? '親としてルームを作成し、参加申請を承認するための設定です。'
+                : '子として共有リンクやルームIDからルーム参加を申請するための設定です。'}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -3253,35 +3250,50 @@ export default function App() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => {
-              if (memberRoleLocked) return;
-              setSharedSetupRole('owner');
-            }}
-            disabled={memberRoleLocked}
-            className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-              sharedSetupRole === 'owner'
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-          >
-            親として使う
-          </button>
-          <button
-            onClick={() => setSharedSetupRole('member')}
-            className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
-              sharedSetupRole === 'member'
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-            }`}
-          >
-            子として申請
-          </button>
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-600">どちらの立場で使うか選ぶ</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                if (memberRoleLocked) return;
+                setSharedSetupRole('owner');
+              }}
+              disabled={memberRoleLocked}
+              className={`rounded-xl border px-4 py-3 text-left transition ${
+                sharedSetupRole === 'owner'
+                  ? 'bg-gray-900 text-white border-gray-900 shadow'
+                  : 'bg-gray-50 text-gray-800 border-gray-300 hover:bg-gray-100'
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Crown size={16} />
+                親としてルームを作る
+              </div>
+              <div className={`mt-1 text-xs leading-relaxed ${sharedSetupRole === 'owner' ? 'text-gray-200' : 'text-gray-600'}`}>
+                ルームIDを発行して、子から届く参加申請を承認します。
+              </div>
+            </button>
+            <button
+              onClick={() => setSharedSetupRole('member')}
+              className={`rounded-xl border px-4 py-3 text-left transition ${
+                sharedSetupRole === 'member'
+                  ? 'bg-gray-900 text-white border-gray-900 shadow'
+                  : 'bg-gray-50 text-gray-800 border-gray-300 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <User size={16} />
+                子としてルームに参加する
+              </div>
+              <div className={`mt-1 text-xs leading-relaxed ${sharedSetupRole === 'member' ? 'text-gray-200' : 'text-gray-600'}`}>
+                共有リンクやルームIDを使って、親に参加申請を送ります。
+              </div>
+            </button>
+          </div>
         </div>
         {memberRoleLocked && (
           <div className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
-            共有リンクから開いたため、この画面では子として申請する流れに固定されています。
+            共有リンクから開いたため、「子としてルームに参加する」に固定されています。
           </div>
         )}
 
@@ -3354,7 +3366,7 @@ export default function App() {
             disabled={memberRoleLocked}
             className="flex-1 bg-gray-800 hover:bg-gray-700 text-sm text-white py-2.5 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            親ルームID発行
+            新しい親ルームIDを作る
           </button>
           <button
             onClick={() => {
@@ -3375,57 +3387,13 @@ export default function App() {
             className="flex-1 bg-gray-200 hover:bg-gray-300 text-sm text-gray-900 py-2.5 rounded disabled:opacity-40"
             disabled={!lastSharedRoom}
           >
-            前回のIDを使う
+            前回の親ルームを開く
           </button>
         </div>
 
         {canManageRequests && (
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-800">
             参加申請の確認と承認は、右上のメールボックスから行います。
-          </div>
-        )}
-
-        {activeMode === 'shared' && isOwner && roomId && (
-          <div className="space-y-2 border-t border-gray-200 pt-3">
-            <div className="text-xs text-gray-500">このルームのピンを一括削除</div>
-            <button
-              onClick={deleteAllRoomPins}
-              disabled={isDeletingPins}
-              className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500 shadow disabled:opacity-50"
-            >
-              {isDeletingPins ? '削除中...' : 'ピンをすべて削除'}
-            </button>
-            <div className="text-[11px] text-gray-500">親だけが実行できます。削除は取り消せません。</div>
-            <div className="text-xs text-gray-500 pt-1">タイプを選んで削除</div>
-            <select
-              value={deleteTargetType}
-              onChange={(e) => setDeleteTargetType(e.target.value)}
-              className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900"
-            >
-              <option value="">タイプを選択</option>
-              {Object.values(mergedMarkers).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={deletePinsByType}
-              disabled={isDeletingPins || !deleteTargetType}
-              className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-700 hover:bg-red-600 text-white border border-red-600 shadow disabled:opacity-50"
-            >
-              {isDeletingPins ? '削除中...' : '選んだタイプのピンを削除'}
-            </button>
-            <div className="text-[11px] text-gray-500">選択したタイプのピンだけを削除します。</div>
-            <div className="text-xs text-gray-500 pt-1">ルームまるごと削除</div>
-            <button
-              onClick={deleteCurrentRoomData}
-              disabled={isDeletingPins}
-              className="w-full px-3 py-2.5 text-sm font-semibold rounded bg-red-800 hover:bg-red-700 text-white border border-red-700 shadow disabled:opacity-50"
-            >
-              {isDeletingPins ? '削除中...' : 'ルームとデータを削除'}
-            </button>
-            <div className="text-[11px] text-gray-500">ピン/マップメタ/ルーム情報を削除します。</div>
           </div>
         )}
 
@@ -3441,7 +3409,7 @@ export default function App() {
               onClick={handleConfirmShared}
               className="px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded text-white font-semibold"
             >
-              {sharedSetupRole === 'owner' ? '親として開始' : '子として申請'}
+              {sharedSetupRole === 'owner' ? '親としてこのルームを使う' : '子として参加申請する'}
             </button>
           )}
         </div>
