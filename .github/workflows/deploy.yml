@@ -47,4 +47,12 @@ jobs:
             rm -rf "$TMP_DIR"
             cd "$APP_DIR"
             sudo docker compose up -d --build --remove-orphans
-            curl --fail http://localhost/api/health
+            for i in $(seq 1 20); do
+              if curl --fail --silent http://localhost/api/health > /dev/null; then
+                curl --fail --silent http://localhost/api/health
+                exit 0
+              fi
+              sleep 3
+            done
+            sudo docker compose logs --tail=50 web
+            exit 1
