@@ -55,6 +55,78 @@ node --version
 npm --version
 ```
 
+## 使用技術・言語・API
+
+このリポジトリで使っている主な技術要素を、役割ごとにまとめると次のとおりです。
+
+### 言語
+
+- JavaScript / JSX
+  - フロントエンド本体
+- Python
+  - バックエンドと配信
+- HTML
+  - Vite のエントリ HTML
+- CSS
+  - Tailwind CSS を使ったスタイル
+- YAML
+  - GitHub Actions workflow
+- Dockerfile / Compose YAML
+  - コンテナ build と起動設定
+- env
+  - 環境変数設定
+
+### フロントエンド
+
+- React 19
+- Vite 7
+- Firebase JavaScript SDK
+- Tailwind CSS
+- lucide-react
+- html2canvas
+- supercluster
+
+### バックエンド・配信
+
+- Flask 3.1
+- Gunicorn 23
+- Python 3.12
+
+### Docker / デプロイ
+
+- Docker
+- Docker Compose
+- GitHub Actions
+- AWS EC2
+
+### 外部サービス / 外部 API
+
+- Firebase Authentication
+  - 匿名ログイン
+  - 必要に応じてカスタムトークンログイン
+- Cloud Firestore
+  - 共有ルーム
+  - 参加申請
+  - リアルタイムのピン同期
+
+### アプリ内で使っている主な Web API / ブラウザ API
+
+- Local Storage API
+  - 名前、保存ルーム、ローカルピン、カスタムアイコンなどの保存
+- URLSearchParams
+  - `room` や `map` などの URL パラメータ処理
+- Clipboard API
+  - 共有リンクのコピー
+- Canvas / DOM キャプチャ
+  - `html2canvas` を使った画像保存
+
+### このアプリが公開している内部 API
+
+- `GET /api/health`
+  - サービス状態と Firebase 設定状態の確認
+- `GET /config.js`
+  - フロントエンドへ実行時設定を渡すための設定スクリプト
+
 ## 初回セットアップ手順
 
 ### 1. clone する

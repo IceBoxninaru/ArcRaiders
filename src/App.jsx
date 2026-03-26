@@ -4099,21 +4099,11 @@ export default function App() {
                 return (
                   <div
                     key={`cluster-${cluster.id || idx}`}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-200 hover:scale-110"
+                    className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                     style={{
                       left: lng,
                       top: lat,
                       zIndex: 5,
-                    }}
-                    onClick={() => {
-                      // ズームインしてクラスタを展開
-                      const newScale = transform.scale * 2;
-                      setTransform({
-                        ...transform,
-                        x: transform.x - (lng - windowWidth / 2),
-                        y: transform.y - (lat - windowHeight / 2),
-                        scale: newScale,
-                      });
                     }}
                   >
                     <div
