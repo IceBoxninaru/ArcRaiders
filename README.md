@@ -5,6 +5,8 @@ ArcRaiders の戦術マップにピンを置いて、ローカルまたは共有
 
 この README は、`git clone` した直後の人が別 PC・別環境でも迷わず起動できるように、初回セットアップを中心にまとめています。
 
+先生に渡すための最短手順は [TEACHER_DEPLOY.md](./TEACHER_DEPLOY.md) に分けています。
+
 ## このリポジトリの前提
 
 - Docker で起動する場合、Node.js や Python をホスト PC に直接入れる必要はありません。
